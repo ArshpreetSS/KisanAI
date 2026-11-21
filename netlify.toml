@@ -1,0 +1,18 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/chat"
+  to = "/.netlify/functions/gemini-chat"
+  status = 200
+
+[[redirects]]
+  from = "/api/scan-analyze"
+  to = "/.netlify/functions/gemini-scan"
+  status = 200
+
+[[redirects]]
+  from = "/api/otp/*"
+  to = "/.netlify/functions/otp/:splat"
+  status = 200

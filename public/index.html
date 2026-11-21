@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kisan AI — Precision Agriculture Platform</title>
+  <meta name="description" content="Precision Agriculture Platform for North Indian Farmers: Real-Time Agromet Telemetry, AI Crop Disease Scanner, Verified Helplines, and Multilingual Voice AI." />
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  
+  <!-- Chart.js 4.4.1 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Google Fonts: Inter, Noto Sans Gurmukhi, Noto Sans Devanagari, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&family=Noto+Sans+Gurmukhi:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased selection:bg-emerald-100 selection:text-emerald-900">
+
+  <!-- Floating Toast Notifications -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Top Navigation & Brand Header -->
+  <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/90 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <!-- Logo & Branding -->
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-800 text-white flex items-center justify-center font-bold text-xl shadow-md border border-emerald-500/30 select-none">
+          🌾
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-extrabold text-slate-900 tracking-tight leading-tight">Kisan AI</h1>
+            <span id="system-health-pill" class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block pulse-indicator"></span>
+              <span>Satellite Telemetry Active</span>
+            </span>
+          </div>
+          <p id="header-subtitle" class="text-xs text-slate-500 font-medium">Precision Agri-Tech Intelligence Platform for North Indian Farmers</p>
+        </div>
+      </div>
+
+      <!-- Controls: Registered Farmer Badge, AI Settings & Language Selector -->
+      <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <!-- Farm Location Pill -->
+        <span id="farm-location-tag" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700">
+          📍 Fatehgarh Sahib, PB
+        </span>
+
+        <!-- Registered Farmer Pill -->
+        <span id="header-farmer-pill" class="hidden px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold"></span>
+        
+        <!-- AI Settings Trigger Button -->
+        <button type="button" id="open-ai-settings-btn" class="px-2.5 py-1 text-xs font-bold rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs flex items-center gap-1.5 transition" title="Configure Google Gemini or OpenAI ChatGPT API Key">
+          <span>⚙️</span>
+          <span class="hidden md:inline">AI Engine:</span>
+          <span id="header-ai-model-tag" class="font-extrabold text-emerald-700">Gemini / GPT</span>
+          <span id="header-ai-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        </button>
+
+        <!-- SMS Gateway Setup Trigger Button -->
+        <button type="button" id="open-sms-settings-btn" class="px-2.5 py-1 text-xs font-bold rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs flex items-center gap-1.5 transition" title="Configure Real SMS Gateway (Fast2SMS or Twilio)">
+          <span>📲</span>
+          <span class="hidden md:inline">SMS Gateway:</span>
+          <span id="header-sms-gateway-tag" class="font-extrabold text-blue-700">Live / Sim</span>
+          <span id="header-sms-dot" class="w-2 h-2 rounded-full bg-blue-500"></span>
+        </button>
+
+        <!-- Language Selector -->
+        <div class="flex items-center gap-1.5">
+          <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 shadow-inner" role="group" aria-label="Language Mode Selector">
+            <button type="button" data-lang="gurmukhi" class="lang-btn px-2.5 py-1 text-xs font-semibold rounded-lg transition text-slate-600 hover:text-slate-900">ਪੰਜਾਬੀ</button>
+            <button type="button" data-lang="hindi" class="lang-btn px-2.5 py-1 text-xs font-semibold rounded-lg transition text-slate-600 hover:text-slate-900">हिन्दी</button>
+            <button type="button" data-lang="hinglish" class="lang-btn px-2.5 py-1 text-xs font-bold rounded-lg transition bg-white text-emerald-800 shadow-2xs border border-slate-200">Hinglish</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4-Interface Navigation Bar -->
+    <nav class="max-w-7xl mx-auto px-4 pb-2.5" aria-label="Main Application Interfaces">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <button type="button" data-tab="temp" class="tab-btn tab-active flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition" aria-selected="true">
+          <span>🌡️</span>
+          <span class="truncate" id="nav-label-temp">1. Temperature &amp; Agromet</span>
+        </button>
+        <button type="button" data-tab="scan" class="tab-btn bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition" aria-selected="false">
+          <span>📷</span>
+          <span class="truncate" id="nav-label-scan">2. Crop AI Scanner</span>
+        </button>
+        <button type="button" data-tab="support" class="tab-btn bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition" aria-selected="false">
+          <span>📞</span>
+          <span class="truncate" id="nav-label-support">3. Helplines &amp; Schemes</span>
+        </button>
+        <button type="button" data-tab="kisan" class="tab-btn bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition" aria-selected="false">
+          <span>🤖</span>
+          <span class="truncate" id="nav-label-kisan">4. Kisan Voice AI</span>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
+
+    <!-- ==============================================================
+         INTERFACE 1: AGRO-CLIMATIC TEMPERATURE & TELEMETRY DASHBOARD
+         ============================================================== -->
+    <section id="panel-temp" class="tab-panel space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 id="temp-title" class="text-xl font-extrabold text-slate-900 tracking-tight">Agro-Climatic Micro-Weather Telemetry</h2>
+            <span id="source-status-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              Live Agromet Station (Open-Meteo)
+            </span>
+          </div>
+          <p id="temp-desc" class="text-sm text-slate-600 mt-0.5">Satellite agromet telemetry, Penman-Monteith ET0, Growing Degree Days, and 7-day spray suitability.</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" id="gps-detect-btn" class="px-3.5 py-1.5 text-xs font-bold rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 transition shadow-2xs flex items-center gap-1.5">
+            <span>📍</span><span>Detect Farm GPS</span>
+          </button>
+          <button type="button" id="toggle-source-btn" class="px-3.5 py-1.5 text-xs font-semibold rounded-xl border border-slate-300 bg-white hover:bg-slate-50 transition shadow-2xs">
+            Source: Satellite Weather
+          </button>
+          <button type="button" id="toggle-unit-btn" class="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-700 text-white hover:bg-emerald-800 transition shadow-2xs">
+            Unit: °C
+          </button>
+        </div>
+      </div>
+
+      <!-- Threshold Alarm Banner -->
+      <div id="temp-alert-banner" class="hidden rounded-2xl border border-red-300 bg-red-50 p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl select-none">⚠️</span>
+          <div>
+            <p id="temp-alert-text" class="text-sm font-bold text-red-900">Critical Agro-Climatic Warning!</p>
+            <p id="temp-alert-desc" class="text-xs text-red-700 mt-0.5">Automated SMS alert ready for farmer phone number.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" id="send-live-gateway-alert-btn" class="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition shadow-sm flex items-center gap-1.5">
+            <span>📡</span><span>Dispatch Gateway SMS</span>
+          </button>
+          <a id="temp-sms-link" href="sms:?body=Kisan%20AI%20Alert:%20Field%20temperature%20crossed%20safe%20threshold." class="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition flex items-center gap-1.5 shadow-sm">
+            <span>💬</span><span>Phone SMS</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Circular SVG Telemetry Gauges Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Air Temperature Gauge -->
+        <div class="agri-card p-5 flex items-center justify-between">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Air Temperature</span>
+            <div class="mt-1 text-3xl font-extrabold text-slate-900 font-mono-numbers" id="temp-value-display">24.5°C</div>
+            <span id="temp-status-badge" class="inline-block mt-2 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">Optimal / Normal</span>
+            <p class="mt-1 text-[11px] text-slate-400" id="temp-updated-at">Updated: Live Agromet</p>
+          </div>
+          <div class="relative w-20 h-20 shrink-0">
+            <svg class="w-20 h-20 transform -rotate-90" viewBox="0 0 100 100">
+              <circle class="gauge-circle-bg" cx="50" cy="50" r="38"></circle>
+              <circle id="gauge-temp-bar" class="gauge-circle-bar stroke-emerald-600" cx="50" cy="50" r="38" stroke-dasharray="238.76" stroke-dashoffset="119"></circle>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center text-sm font-bold text-emerald-800 select-none">🌡️</div>
+          </div>
+        </div>
+
+        <!-- Relative Humidity Gauge -->
+        <div class="agri-card p-5 flex items-center justify-between">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Relative Humidity</span>
+            <div class="mt-1 text-3xl font-extrabold text-slate-900 font-mono-numbers" id="humidity-display">58%</div>
+            <span class="inline-block mt-2 px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-bold">Favorable Foliar Range</span>
+            <p class="mt-1 text-[11px] text-slate-400">Low stripe rust dew risk</p>
+          </div>
+          <div class="relative w-20 h-20 shrink-0">
+            <svg class="w-20 h-20 transform -rotate-90" viewBox="0 0 100 100">
+              <circle class="gauge-circle-bg" cx="50" cy="50" r="38"></circle>
+              <circle id="gauge-humidity-bar" class="gauge-circle-bar stroke-blue-600" cx="50" cy="50" r="38" stroke-dasharray="238.76" stroke-dashoffset="100"></circle>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center text-sm font-bold text-blue-800 select-none">💧</div>
+          </div>
+        </div>
+
+        <!-- Soil Moisture Gauge -->
+        <div class="agri-card p-5 flex items-center justify-between">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Soil Moisture (0-10cm)</span>
+            <div class="mt-1 text-3xl font-extrabold text-slate-900 font-mono-numbers" id="moisture-display">42%</div>
+            <span class="inline-block mt-2 px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 text-[11px] font-bold">AWD Safe Level</span>
+            <p class="mt-1 text-[11px] text-slate-400">Adequate root zone turgor</p>
+          </div>
+          <div class="relative w-20 h-20 shrink-0">
+            <svg class="w-20 h-20 transform -rotate-90" viewBox="0 0 100 100">
+              <circle class="gauge-circle-bg" cx="50" cy="50" r="38"></circle>
+              <circle id="gauge-moisture-bar" class="gauge-circle-bar stroke-teal-600" cx="50" cy="50" r="38" stroke-dasharray="238.76" stroke-dashoffset="138"></circle>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center text-sm font-bold text-teal-800 select-none">🌱</div>
+          </div>
+        </div>
+
+        <!-- Penman-Monteith Evapotranspiration -->
+        <div class="agri-card p-5 flex items-center justify-between">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Crop Water Loss (ET0)</span>
+            <div class="mt-1 text-2xl font-extrabold text-slate-900 font-mono-numbers" id="et0-display">3.4 mm/day</div>
+            <span class="inline-block mt-2 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[11px] font-bold" id="spray-score-badge">
+              Spray Score: <span id="spray-score-display">92%</span>
+            </span>
+            <p class="mt-1 text-[11px] text-slate-400">Foliar spray window: Good</p>
+          </div>
+          <div class="relative w-20 h-20 shrink-0">
+            <svg class="w-20 h-20 transform -rotate-90" viewBox="0 0 100 100">
+              <circle class="gauge-circle-bg" cx="50" cy="50" r="38"></circle>
+              <circle id="gauge-et0-bar" class="gauge-circle-bar stroke-amber-500" cx="50" cy="50" r="38" stroke-dasharray="238.76" stroke-dashoffset="120"></circle>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center text-sm font-bold text-amber-700 select-none">☀️</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Precision Agromet Indicators Strip (Delta-T, GDD, Solar Radiation) -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center justify-between">
+          <div>
+            <span class="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">Delta-T (Spray Drift Safety)</span>
+            <div class="text-xl font-extrabold text-slate-900 font-mono-numbers mt-0.5" id="delta-t-display">4.8°C</div>
+            <div class="text-[11px] text-emerald-700 font-semibold mt-0.5">Optimal Window (2°C - 8°C)</div>
+          </div>
+          <div class="text-2xl select-none">🎯</div>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center justify-between">
+          <div>
+            <span class="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">Growing Degree Days (GDD)</span>
+            <div class="text-xl font-extrabold text-slate-900 font-mono-numbers mt-0.5" id="gdd-display">342 GDD</div>
+            <div class="text-[11px] text-blue-700 font-semibold mt-0.5">Rabi Wheat Base 10°C (Tillering)</div>
+          </div>
+          <div class="text-2xl select-none">🌾</div>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center justify-between">
+          <div>
+            <span class="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">Wind Velocity &amp; Drift</span>
+            <div class="text-xl font-extrabold text-slate-900 font-mono-numbers mt-0.5" id="wind-display">8.0 km/h</div>
+            <div class="text-[11px] text-teal-700 font-semibold mt-0.5">Calm Breeze • Safe for Spraying</div>
+          </div>
+          <div class="text-2xl select-none">💨</div>
+        </div>
+      </div>
+
+      <!-- 7-Day Agricultural Forecast Strip -->
+      <div class="agri-card p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">7-Day Agro-Meteorological Forecast</h3>
+            <p class="text-xs text-slate-500">Satellite precipitation probability, wind velocity, and spray suitability timeline</p>
+          </div>
+          <span class="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">Open-Meteo High-Resolution Grid</span>
+        </div>
+        <div id="forecast-strip" class="flex gap-2 overflow-x-auto pb-1"></div>
+      </div>
+
+      <!-- Controls & Precision Irrigation Calculator & Telemetry Chart -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <!-- Left: Threshold Controls & Precision Irrigation Calculator (2 Cols) -->
+        <div class="lg:col-span-2 space-y-4">
+          <!-- Threshold Bounds Card -->
+          <div class="agri-card p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-900">Alarm Thresholds &amp; Test</h3>
+              <span class="text-[11px] text-slate-500 font-medium">Auto-SMS Setup</span>
+            </div>
+            
+            <div>
+              <div class="flex justify-between text-xs font-semibold mb-1">
+                <span class="text-slate-600">Min Threshold (Frost Hazard)</span>
+                <span id="min-thresh-label" class="font-bold text-blue-700 font-mono-numbers">10.0°C</span>
+              </div>
+              <input type="range" id="min-thresh-slider" min="0" max="25" value="10" class="w-full accent-emerald-700 cursor-pointer" />
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs font-semibold mb-1">
+                <span class="text-slate-600">Max Threshold (Heat Stress)</span>
+                <span id="max-thresh-label" class="font-bold text-red-700 font-mono-numbers">35.0°C</span>
+              </div>
+              <input type="range" id="max-thresh-slider" min="25" max="50" value="35" class="w-full accent-emerald-700 cursor-pointer" />
+            </div>
+
+            <div class="pt-2 border-t border-slate-100">
+              <label class="block text-xs font-bold text-slate-700 mb-2">Simulate Agromet Scenarios:</label>
+              <div class="grid grid-cols-3 gap-2">
+                <button type="button" id="sim-normal-btn" class="px-2.5 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 transition">Normal 24.5°</button>
+                <button type="button" id="sim-spike-btn" class="px-2.5 py-2 text-xs font-bold rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 transition">Heat 38.5°</button>
+                <button type="button" id="sim-drop-btn" class="px-2.5 py-2 text-xs font-bold rounded-xl bg-blue-100 hover:bg-blue-200 text-blue-900 transition">Frost 3.5°</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Precision Tubewell Irrigation Calculator -->
+          <div class="agri-card p-5 space-y-3.5 border-emerald-200 bg-emerald-50/30">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800">Precision Water Delivery</span>
+                <h3 class="text-sm font-bold text-slate-900">Tubewell Pumping Hours Calculator</h3>
+              </div>
+              <span class="text-lg">⏱️</span>
+            </div>
+            
+            <p class="text-xs text-slate-600">Calculates root-zone water replenishment based on soil texture and tubewell discharge capacity:</p>
+
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <label for="irrig-soil-type" class="block font-bold text-slate-700 mb-1">Soil Texture</label>
+                <select id="irrig-soil-type" class="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white font-semibold focus:outline-none">
+                  <option value="loam" selected>Alluvial Loam (ਦੋਮਟ)</option>
+                  <option value="sandy_loam">Sandy Loam (ਰੇਤਲੀ ਦੋਮਟ)</option>
+                  <option value="clay_loam">Clay Loam (ਚੀਕਣੀ ਦੋਮਟ)</option>
+                  <option value="red_soil">Red Soil (ਲਾਲ ਮਿੱਟੀ)</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="irrig-crop-stage" class="block font-bold text-slate-700 mb-1">Growth Stage</label>
+                <select id="irrig-crop-stage" class="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white font-semibold focus:outline-none">
+                  <option value="0.3">CRI Stage (0.3m Root)</option>
+                  <option value="0.6" selected>Tillering / Jointing (0.6m)</option>
+                  <option value="0.9">Flowering / Booting (0.9m)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label for="irrig-pump-hp" class="block font-bold text-slate-700 mb-1 text-xs">Submersible Motor Power</label>
+              <select id="irrig-pump-hp" class="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white font-semibold text-xs focus:outline-none">
+                <option value="5.0">5.0 HP Motor (~20,000 L/Hr)</option>
+                <option value="7.5" selected>7.5 HP Motor (~30,000 L/Hr)</option>
+                <option value="10.0">10.0 HP Motor (~40,000 L/Hr)</option>
+              </select>
+            </div>
+
+            <!-- Dynamic Result -->
+            <div id="irrig-calc-result" class="pt-1"></div>
+          </div>
+        </div>
+
+        <!-- Right: Continuous Telemetry Chart (3 Cols) -->
+        <div class="lg:col-span-3 agri-card p-5 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">24-Hour Continuous Telemetry Trend</h3>
+              <p class="text-xs text-slate-500">Dual-axis correlation of ambient temperature vs relative humidity</p>
+            </div>
+            <span class="text-xs text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-bold">Live Stream</span>
+          </div>
+          
+          <div class="relative h-80 w-full mt-2">
+            <canvas id="tempChart"></canvas>
+          </div>
+
+          <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-2">
+            <span>Satellite telemetry polled continuously every 15 minutes.</span>
+            <span class="font-semibold text-slate-700">ICAR Agromet Station PB-04</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==============================================================
+         INTERFACE 2: AI CROP & PLANT PATHOLOGY SCANNER
+         ============================================================== -->
+    <section id="panel-scan" class="tab-panel hidden space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 id="scan-title" class="text-xl font-extrabold text-slate-900 tracking-tight">AI Crop &amp; Plant Pathology Scanner</h2>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              1080p Neural Vision Active
+            </span>
+          </div>
+          <p id="scan-desc" class="text-sm text-slate-600 mt-0.5">Diagnose foliar blight, rust, fungal spores, and nutrient deficiencies with certified PAU &amp; ICAR remedies.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" id="flip-cam-btn" class="px-3.5 py-1.5 text-xs font-bold rounded-xl border border-slate-300 bg-white hover:bg-slate-50 transition shadow-2xs flex items-center gap-1.5">
+            <span>🔄</span><span>Flip Lens</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <!-- Viewfinder & Camera Controls (2 Cols) -->
+        <div class="lg:col-span-2 space-y-4">
+          <!-- Viewfinder HUD Box -->
+          <div class="camera-hud-frame h-80 flex items-center justify-center relative">
+            <!-- HUD Reticle Corners -->
+            <div class="hud-corner hud-corner-tl"></div>
+            <div class="hud-corner hud-corner-tr"></div>
+            <div class="hud-corner hud-corner-bl"></div>
+            <div class="hud-corner hud-corner-br"></div>
+            <div class="hud-crosshair"></div>
+
+            <!-- Animated Laser Scan Line -->
+            <div id="scan-line-bar" class="hidden absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent scan-line-anim shadow-[0_0_12px_#22c55e] z-20"></div>
+
+            <!-- Video Stream Element -->
+            <video id="scan-camera-video" playsinline class="hidden w-full h-full object-cover"></video>
+
+            <!-- Captured / Uploaded Image Preview -->
+            <img id="scan-preview-img" alt="Scanned Leaf Preview" class="hidden w-full h-full object-cover" />
+
+            <!-- Default Placeholder -->
+            <div id="scan-placeholder" class="text-center p-6 space-y-2 select-none z-10">
+              <div class="text-5xl">📷</div>
+              <p class="text-sm font-bold text-slate-300">Viewfinder Ready</p>
+              <p class="text-xs text-slate-400 max-w-xs">Click "Open Camera" to use your live phone lens, or upload a leaf photo.</p>
+            </div>
+
+            <!-- HUD Overlay Status Tag -->
+            <div class="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[11px] font-mono-numbers text-emerald-400/90 z-10 bg-slate-950/70 px-3 py-1 rounded-lg backdrop-blur-xs border border-emerald-500/20">
+              <span id="scan-status-text">Scanner Ready (1080p Neural Vision Active)</span>
+              <span>ISO AUTO</span>
+            </div>
+          </div>
+
+          <!-- Camera Action Buttons -->
+          <div class="flex gap-2">
+            <button type="button" id="toggle-cam-btn" class="flex-1 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5">
+              <span>📸</span><span>Open Camera</span>
+            </button>
+            <button type="button" id="capture-scan-btn" class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+              <span>⚡</span><span>Snapshot</span>
+            </button>
+            <button type="button" id="upload-scan-btn" class="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold transition shadow-2xs flex items-center gap-1.5">
+              <span>📁</span><span>Upload</span>
+            </button>
+            <input type="file" id="scan-file-input" accept="image/*" class="hidden" />
+          </div>
+
+          <!-- Certified Pathology Presets (Quick Tests) -->
+          <div class="agri-card p-4 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-900">Certified Test Presets:</span>
+              <span class="text-[10px] text-slate-500">PAU Field Cases</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <button type="button" data-preset="wheat" class="preset-scan-btn p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-left font-semibold transition flex items-center gap-2">
+                <span>🌾</span><span class="truncate">Wheat Stripe Rust</span>
+              </button>
+              <button type="button" data-preset="paddy" class="preset-scan-btn p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-left font-semibold transition flex items-center gap-2">
+                <span>🌾</span><span class="truncate">Paddy Bacterial Blight</span>
+              </button>
+              <button type="button" data-preset="tomato" class="preset-scan-btn p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-left font-semibold transition flex items-center gap-2">
+                <span>🍅</span><span class="truncate">Tomato Leaf Curl</span>
+              </button>
+              <button type="button" data-preset="mustard" class="preset-scan-btn p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-left font-semibold transition flex items-center gap-2">
+                <span>🌼</span><span class="truncate">Mustard Aphid (Chepa)</span>
+              </button>
+              <button type="button" data-preset="cotton" class="preset-scan-btn p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-left font-semibold transition flex items-center gap-2">
+                <span>🌸</span><span class="truncate">Cotton Pink Bollworm</span>
+              </button>
+              <button type="button" data-preset="dry_bear_stem" class="preset-scan-btn p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-300 text-left font-semibold transition flex items-center gap-2">
+                <span>🪵</span><span class="truncate">Dry Ber Stem / Pruning</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Recent Scans History -->
+          <div class="agri-card p-4 space-y-2">
+            <span class="text-xs font-bold text-slate-900 block">Recent Scans in this Session:</span>
+            <div id="scan-history-list" class="space-y-1.5">
+              <div class="text-xs text-slate-400 py-2 text-center">No recent scans logged in this session.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pathology Prescription & Diagnostic Results (3 Cols) -->
+        <div class="lg:col-span-3 agri-card p-6 flex flex-col justify-between space-y-5">
+          <!-- Diagnostic Header -->
+          <div class="border-b border-slate-100 pb-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span id="scan-item-category" class="text-xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">Rabi Cereal Pathology</span>
+              <span id="scan-source-badge" class="text-[11px] font-semibold text-slate-400">ICAR / PAU Expert Agronomy Pathology Engine</span>
+            </div>
+
+            <div class="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h3 id="scan-item-name" class="text-2xl font-extrabold text-slate-900 tracking-tight">Wheat (ਕਣਕ / गेहूं)</h3>
+                <p id="scan-scientific-name" class="text-xs italic text-slate-500 font-medium">Botanical: Triticum aestivum</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span id="scan-health-status" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">Healthy / Early Vigilance</span>
+                <span id="scan-severity-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">Low Alert</span>
+                <span id="scan-confidence-badge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-900 text-white font-mono-numbers">96% Match</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Clinical Diagnosis & Economic Damage Risk -->
+          <div class="space-y-3">
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs text-slate-700 leading-relaxed" id="scan-diagnosis-text">
+              Healthy vegetative canopy with no active sporulation. Seasonal weather poses low-to-moderate stripe rust risk if morning humidity stays above 80%.
+            </div>
+
+            <div class="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200 text-xs space-y-1">
+              <span class="font-extrabold text-amber-900 block">⚠️ Economic Damage Assessment:</span>
+              <p id="scan-risk-text" class="text-amber-800 leading-relaxed">Estimated 5% - 25% yield loss if yellow rust spores develop untreated in humid conditions.</p>
+            </div>
+          </div>
+
+          <!-- Symptoms Checklist -->
+          <div>
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-2">Verified Diagnostic Symptoms:</h4>
+            <ul id="scan-symptoms-list" class="space-y-1.5">
+              <li class="flex items-start gap-2 text-xs text-slate-700">
+                <span class="text-emerald-700 font-extrabold">•</span>
+                <span>Bright green linear leaf blades with intact chlorophyll</span>
+              </li>
+              <li class="flex items-start gap-2 text-xs text-slate-700">
+                <span class="text-emerald-700 font-extrabold">•</span>
+                <span>No active yellow powdery pustules observed on upper epidermis</span>
+              </li>
+              <li class="flex items-start gap-2 text-xs text-slate-700">
+                <span class="text-emerald-700 font-extrabold">•</span>
+                <span>Stem node elongation progressing normally for current stage</span>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Actionable Treatment Protocol -->
+          <div class="space-y-3 pt-2 border-t border-slate-100 text-xs">
+            <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-800">Prescribed Treatment Protocol:</h4>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <!-- Chemical Prescription -->
+              <div class="p-3 rounded-xl bg-blue-50/60 border border-blue-200 space-y-1">
+                <span class="font-bold text-blue-900 block">💊 Certified Chemical Spray:</span>
+                <p id="scan-chemical-treatment" class="text-blue-800 leading-relaxed">Spray Propiconazole 25% EC (Tilt 25 EC) @ 200 ml in 200 litres of water per acre.</p>
+              </div>
+
+              <!-- Organic / Biological -->
+              <div class="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-1">
+                <span class="font-bold text-emerald-900 block">🌿 Bio-Fungicide / Organic Remedy:</span>
+                <p id="scan-organic-treatment" class="text-emerald-800 leading-relaxed">Spray 5% Neem Seed Kernel Extract (NSKE) or Trichoderma viride culture (2.5 kg/ha).</p>
+              </div>
+            </div>
+
+            <!-- Long-term Preventive Measures -->
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span class="font-bold text-slate-800 block">🛡️ Preventive Measures &amp; Seed Varieties:</span>
+              <p id="scan-preventive-measures" class="text-slate-600 leading-relaxed">Opt for certified disease-resistant varieties such as PBW 826, DBW 187, or HD 3086.</p>
+            </div>
+          </div>
+
+          <!-- Bottom Action Buttons: WhatsApp Share & Helpline -->
+          <div id="scan-action-row" class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div class="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+              <span>📞 Helpline:</span>
+              <span id="scan-helpline-contact" class="font-bold text-slate-800">KVK Fatehgarh Sahib: 81465-70699</span>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button type="button" id="share-whatsapp-rx-btn" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+                <span>💬</span><span>Share Rx via WhatsApp</span>
+              </button>
+              <a href="tel:8146570699" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+                <span>📞</span><span>Call Pathologist</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==============================================================
+         INTERFACE 3: HELPLINES, GOVT SCHEMES & DIGITAL MANUALS
+         ============================================================== -->
+    <section id="panel-support" class="tab-panel hidden space-y-6">
+      <div>
+        <h2 id="support-title" class="text-xl font-extrabold text-slate-900 tracking-tight">Agricultural Helplines, Govt Schemes &amp; Knowledge Base</h2>
+        <p id="support-desc" class="text-sm text-slate-600 mt-0.5">Verified farmer support desks, 2026 Central &amp; State subsidy calculator, and digital package of practices.</p>
+      </div>
+
+      <!-- Verified Helplines Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Kisan Call Centre (1800-180-1551) -->
+        <div class="agri-card p-5 flex flex-col justify-between hover:border-emerald-400 transition-all">
+          <div>
+            <span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200 mb-2">Toll-Free • 6:00 AM – 10:00 PM</span>
+            <h3 class="text-base font-extrabold text-slate-900">Kisan Call Centre (KCC)</h3>
+            <p class="text-xs text-slate-600 mt-1">Direct pan-India access to agronomists, entomologists, and soil testing officers in Punjabi &amp; Hindi.</p>
+            <div class="mt-3 text-2xl font-extrabold text-emerald-800 tracking-wide font-mono-numbers">1800-180-1551</div>
+          </div>
+          <div class="mt-4 flex gap-2">
+            <a href="tel:18001801551" data-call="1800-180-1551" class="call-trigger flex-1 text-center px-3 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-2xs">
+              📞 Call KCC
+            </a>
+            <a href="sms:18001801551?body=Kisan%20AI%20Farmer%20Advisory%20Inquiry" data-sms="1800-180-1551" class="sms-trigger px-4 py-2.5 rounded-xl border border-emerald-700 text-emerald-800 hover:bg-emerald-50 text-xs font-bold transition">
+              💬 SMS
+            </a>
+          </div>
+        </div>
+
+        <!-- PM-KISAN Helpdesk (155261) -->
+        <div class="agri-card p-5 flex flex-col justify-between hover:border-blue-400 transition-all">
+          <div>
+            <span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-900 border border-blue-200 mb-2">24x7 Central IVRS Desk</span>
+            <h3 class="text-base font-extrabold text-slate-900">PM-KISAN Support</h3>
+            <p class="text-xs text-slate-600 mt-1">Check ₹6,000 installment payment status, land record seeding, and e-KYC biometric verification.</p>
+            <div class="mt-3 text-2xl font-extrabold text-blue-800 tracking-wide font-mono-numbers">155261</div>
+          </div>
+          <div class="mt-4 flex gap-2">
+            <a href="tel:155261" data-call="155261" class="call-trigger flex-1 text-center px-3 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition shadow-2xs">
+              📞 Call 155261
+            </a>
+            <a href="sms:155261?body=PMKISAN%20Status%20Inquiry" data-sms="155261" class="sms-trigger px-4 py-2.5 rounded-xl border border-blue-700 text-blue-800 hover:bg-blue-50 text-xs font-bold transition">
+              💬 SMS
+            </a>
+          </div>
+        </div>
+
+        <!-- Krishi Vigyan Kendra (KVK) Fatehgarh Sahib -->
+        <div class="agri-card p-5 flex flex-col justify-between border-emerald-300 hover:border-emerald-500 transition-all">
+          <div>
+            <span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200 mb-2">Fatehgarh Sahib • Shamsher Nagar</span>
+            <h3 class="text-base font-extrabold text-slate-900">Krishi Vigyan Kendra (KVK)</h3>
+            <p class="text-xs text-slate-600 mt-1">District agricultural center for certified seed distribution, soil testing lab, and farm demonstrations.</p>
+            <div class="mt-3 text-xl font-extrabold text-emerald-800 tracking-wide font-mono-numbers">81465-70699</div>
+            <div class="text-xs font-semibold text-slate-600">Landline: 01763-221217</div>
+          </div>
+          <div class="mt-4 flex gap-2">
+            <a href="tel:+918146570699" data-call="81465-70699" class="call-trigger flex-1 text-center px-3 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-2xs">
+              📞 Call KVK
+            </a>
+            <a href="https://wa.me/918146570699?text=Namaste%20KVK%20Fatehgarh%20Sahib,%20I%20need%20agricultural%20guidance%20for%20my%20crop." target="_blank" rel="noopener noreferrer" class="px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-2xs flex items-center justify-center">
+              💬 WhatsApp
+            </a>
+          </div>
+        </div>
+
+        <!-- Punjab Agricultural University (PAU) Ludhiana -->
+        <div class="agri-card p-5 flex flex-col justify-between hover:border-purple-400 transition-all">
+          <div>
+            <span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200 mb-2">Ludhiana • State Agricultural University</span>
+            <h3 class="text-base font-extrabold text-slate-900">Punjab Agricultural University</h3>
+            <p class="text-xs text-slate-600 mt-1">Official PAU advisory for yellow rust alerts, certified seed varieties, and plant pathology queries.</p>
+            <div class="mt-3 text-xl font-extrabold text-purple-900 tracking-wide font-mono-numbers">0161-2401960</div>
+          </div>
+          <div class="mt-4 flex gap-2">
+            <a href="tel:01612401960" data-call="0161-2401960" class="call-trigger flex-1 text-center px-3 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition shadow-2xs">
+              📞 Call PAU
+            </a>
+            <a href="sms:01612401960?body=PAU%20Ludhiana%20Farmer%20Query" data-sms="0161-2401960" class="sms-trigger px-4 py-2.5 rounded-xl border border-purple-700 text-purple-800 hover:bg-purple-50 text-xs font-bold transition">
+              💬 SMS
+            </a>
+          </div>
+        </div>
+
+        <!-- Emergency Short Code (1551) -->
+        <div class="agri-card p-5 flex flex-col justify-between hover:border-amber-400 transition-all">
+          <div>
+            <span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-200 mb-2">Direct Short Code Dialer</span>
+            <h3 class="text-base font-extrabold text-slate-900">Agri Advisory Desk</h3>
+            <p class="text-xs text-slate-600 mt-1">Emergency 4-digit short code for instant pest alerts, fertilizer supply, and weather warnings.</p>
+            <div class="mt-3 text-2xl font-extrabold text-amber-800 tracking-wide font-mono-numbers">1551</div>
+          </div>
+          <div class="mt-4 flex gap-2">
+            <a href="tel:1551" data-call="1551" class="call-trigger flex-1 text-center px-3 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shadow-2xs">
+              📞 Call 1551
+            </a>
+            <a href="sms:1551?body=Urgent%20Crop%20Advisory" data-sms="1551" class="sms-trigger px-4 py-2.5 rounded-xl border border-amber-600 text-amber-800 hover:bg-amber-50 text-xs font-bold transition">
+              💬 SMS
+            </a>
+          </div>
+        </div>
+
+        <!-- PMFBY Crop Insurance Desk (14447) -->
+        <div class="agri-card p-5 flex flex-col justify-between hover:border-teal-400 transition-all">
+          <div>
+            <span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-100 text-teal-900 border border-teal-200 mb-2">Crop Loss Intimation</span>
+            <h3 class="text-base font-extrabold text-slate-900">PMFBY Claim Desk</h3>
+            <p class="text-xs text-slate-600 mt-1">Report localized hailstorm, waterlogging, or unseasonal frost damage within 72 hours of occurrence.</p>
+            <div class="mt-3 text-2xl font-extrabold text-teal-800 tracking-wide font-mono-numbers">14447</div>
+          </div>
+          <div class="mt-4 flex gap-2">
+            <a href="tel:14447" data-call="14447" class="call-trigger flex-1 text-center px-3 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold transition shadow-2xs">
+              📞 Call 14447
+            </a>
+            <a href="sms:14447?body=PMFBY%20Loss%20Intimation" data-sms="14447" class="sms-trigger px-4 py-2.5 rounded-xl border border-teal-700 text-teal-800 hover:bg-teal-50 text-xs font-bold transition">
+              💬 SMS
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comprehensive Govt Subsidies & Benefits Calculator (Real 2026 Norms) -->
+      <div class="agri-card p-6 border-emerald-300 bg-emerald-50/40 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-200/80 pb-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-md border border-emerald-300">2026 Central &amp; State Schemes</span>
+              <span class="text-xs font-bold text-slate-500">DBT Integrated</span>
+            </div>
+            <h3 class="text-lg font-extrabold text-slate-900 mt-1">Official Govt Subsidies &amp; Credit Eligibility Calculator</h3>
+            <p class="text-xs text-slate-600">Enter your landholding to calculate exact PM-KISAN, PMFBY Insurance, Machinery, and Solar Pump entitlements.</p>
+          </div>
+        </div>
+
+        <!-- Calculator Form Inputs -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label for="subsidy-acres-input" class="block text-xs font-bold text-slate-700 mb-1">Landholding (Acres)</label>
+            <input type="number" id="subsidy-acres-input" min="0.5" max="100" step="0.5" value="3.0" class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 font-bold font-mono-numbers bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600" />
+          </div>
+
+          <div>
+            <label for="subsidy-farmer-cat" class="block text-xs font-bold text-slate-700 mb-1">Farmer Category</label>
+            <select id="subsidy-farmer-cat" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600">
+              <option value="small" selected>Small / Marginal (&lt; 5 Acres)</option>
+              <option value="large">Medium / Large (&gt; 5 Acres)</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="subsidy-crop-season" class="block text-xs font-bold text-slate-700 mb-1">Crop Season</label>
+            <select id="subsidy-crop-season" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600">
+              <option value="rabi" selected>Rabi (Wheat / Mustard - 1.5% Premium)</option>
+              <option value="kharif">Kharif (Paddy / Cotton - 2.0% Premium)</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="subsidy-machinery" class="block text-xs font-bold text-slate-700 mb-1">Equipment Subsidy</label>
+            <select id="subsidy-machinery" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600">
+              <option value="seeder" selected>Super Seeder / CRM (50% Subsidy)</option>
+              <option value="solar">PM-KUSUM Solar Pump (60% Subsidy)</option>
+              <option value="drip">Micro-Irrigation Drip (55% Subsidy)</option>
+              <option value="none">None</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Dynamic Results Display -->
+        <div id="subsidy-results-display" class="pt-2"></div>
+      </div>
+
+      <!-- Agricultural Books & Manuals Library -->
+      <div class="agri-card p-6 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-base font-extrabold text-slate-900">📚 Agricultural Guides &amp; Manuals Library</h3>
+            <p class="text-xs text-slate-500">Verified PAU Ludhiana &amp; ICAR packages of practices with speech synthesis audio narration.</p>
+          </div>
+          <input type="text" id="book-search-input" placeholder="Search guides (e.g. Wheat, Rust, Urea, AWD)..." class="px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 w-full sm:w-64 font-medium bg-white" />
+        </div>
+
+        <!-- Filter Chips -->
+        <div class="flex flex-wrap gap-1.5 pb-2 border-b border-slate-100">
+          <button type="button" data-category="all" class="book-cat-filter px-3 py-1 rounded-lg text-xs font-bold bg-emerald-700 text-white transition">All Guides</button>
+          <button type="button" data-category="Rabi Crops" class="book-cat-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Rabi Crops</button>
+          <button type="button" data-category="Soil Health" class="book-cat-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Soil Health</button>
+          <button type="button" data-category="Kharif Crops" class="book-cat-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Kharif Crops</button>
+          <button type="button" data-category="Pest Control" class="book-cat-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Pest Management</button>
+          <button type="button" data-category="Govt Schemes" class="book-cat-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">Govt Schemes</button>
+        </div>
+
+        <!-- Books Grid -->
+        <div id="books-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+    </section>
+
+    <!-- ==============================================================
+         INTERFACE 4: KISAN REGISTRATION & MULTILINGUAL VOICE AI
+         ============================================================== -->
+    <section id="panel-kisan" class="tab-panel hidden space-y-6">
+      <div>
+        <h2 id="kisan-title" class="text-xl font-extrabold text-slate-900 tracking-tight">Kisan Registration &amp; Multilingual Voice AI</h2>
+        <p id="kisan-desc" class="text-sm text-slate-600 mt-0.5">Secure server-verified farmer onboarding plus real-time conversational AI in Gurmukhi, Hindi, or Hinglish.</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <!-- Farmer Registration Panel (2 Cols) -->
+        <div class="lg:col-span-2 agri-card p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-extrabold text-slate-900">📝 Farmer Profile Registration</h3>
+            <span id="reg-status-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">Unregistered Profile</span>
+          </div>
+
+          <form id="kisan-reg-form" class="space-y-3">
+            <div>
+              <label for="reg-name" class="block text-xs font-bold text-slate-700 mb-1">Farmer Full Name</label>
+              <input type="text" id="reg-name" required placeholder="e.g. Harpreet Singh" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 font-medium" />
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label for="reg-phone" class="block text-xs font-bold text-slate-700">Mobile Number (10 Digits)</label>
+                <span class="text-[10px] font-bold text-emerald-700">100% Free Verification</span>
+              </div>
+              <div class="flex gap-2">
+                <input type="tel" id="reg-phone" required pattern="[6-9][0-9]{9}" value="8360086631" placeholder="e.g. 9876543210" class="flex-1 px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 font-medium" />
+                <button type="button" id="send-otp-btn" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-2xs">
+                  Send OTP
+                </button>
+              </div>
+
+              <!-- 100% Free OTP Channels: WhatsApp & Automated Voice Call -->
+              <div class="mt-2 flex items-center gap-1.5 flex-wrap">
+                <span class="text-[10px] font-bold text-slate-400">Free Options:</span>
+                <button type="button" id="send-wa-otp-btn" class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300 transition flex items-center gap-1">
+                  <span>💬</span><span>WhatsApp OTP (Free)</span>
+                </button>
+                <button type="button" id="voice-call-otp-btn" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[11px] font-bold border border-blue-300 transition flex items-center gap-1">
+                  <span>🔊</span><span>Voice Call IVR (Free)</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Modern 4-Box OTP Input -->
+            <div id="otp-row" class="hidden space-y-1.5">
+              <label class="block text-xs font-bold text-slate-700">Enter 4-Digit Verification Code</label>
+              <div class="flex items-center justify-between gap-2">
+                <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" />
+                <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" />
+                <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" />
+                <input type="text" inputmode="numeric" maxlength="1" class="otp-digit-box" />
+              </div>
+              <p class="text-[11px] text-slate-500">Security code sent to your mobile via SMS. Valid for 5 minutes.</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label for="reg-location" class="block text-xs font-bold text-slate-700 mb-1">District / Village</label>
+                <input type="text" id="reg-location" required placeholder="e.g. Sirhind" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 font-medium" />
+              </div>
+              <div>
+                <label for="reg-crop" class="block text-xs font-bold text-slate-700 mb-1">Primary Crop</label>
+                <input type="text" id="reg-crop" required placeholder="e.g. Wheat" class="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 font-medium" />
+              </div>
+            </div>
+
+            <button type="submit" id="reg-submit-btn" class="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold transition shadow-sm">
+              Verify &amp; Complete Registration
+            </button>
+          </form>
+
+          <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>Need phone support?</span>
+            <a href="tel:18001801551" data-call="1800-180-1551" class="call-trigger font-bold text-emerald-700 hover:underline">📞 Call 1800-180-1551</a>
+          </div>
+        </div>
+
+        <!-- Multilingual Voice-to-Text AI Assistant (3 Cols) -->
+        <div class="lg:col-span-3 agri-card p-5 flex flex-col h-[600px]">
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-base font-extrabold text-slate-900">🎙️ Kisan AI Voice Assistant</h3>
+                <!-- Interactive AI Provider Button -->
+                <button type="button" id="chat-ai-status-badge" class="cursor-pointer text-[10px] font-bold uppercase tracking-wider bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 transition shadow-2xs" title="Click to configure Gemini or ChatGPT API key">
+                  <span id="chat-ai-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block pulse-indicator"></span>
+                  <span id="chat-ai-engine-name">Google Gemini 2.5</span>
+                  <span class="opacity-60">⚙️</span>
+                </button>
+              </div>
+              <p class="text-xs text-slate-500" id="chat-lang-indicator">Auto-Matching: ਪੰਜਾਬੀ (Gurmukhi) • हिन्दी • Hinglish</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="tts-toggle-btn" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition shadow-2xs flex items-center gap-1">
+                <span>🔊</span><span>Voice Out: ON</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Messages Container -->
+          <div id="chat-messages" class="flex-1 overflow-y-auto py-4 space-y-3.5 pr-1"></div>
+
+          <!-- Quick Agro-Query Chips -->
+          <div class="py-2 flex flex-wrap gap-1.5 border-t border-slate-100">
+            <button type="button" data-sample="mai apni lal miti te kehri fasal bija" class="sample-chat-btn px-2.5 py-1 rounded-full bg-red-50 hover:bg-red-100 text-red-900 text-xs font-semibold transition border border-red-200">
+              🌱 Lal Mitti: Fasal Sowing Guide
+            </button>
+            <button type="button" data-sample="ਮੇਰੀ ਕਣਕ ਦੀ ਫਸਲ ਵਿੱਚ ਪੀਲਾ ਰੋਗ ਲੱਗ ਗਿਆ ਹੈ, ਇਲਾਜ ਦੱਸੋ" class="sample-chat-btn px-2.5 py-1 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-semibold transition border border-emerald-200">
+              ਪੰਜਾਬੀ: ਕਣਕ ਪੀਲਾ ਰੋਗ
+            </button>
+            <button type="button" data-sample="मेरी गेहूं की फसल में यूरिया और जिंक कब डालना चाहिए?" class="sample-chat-btn px-2.5 py-1 rounded-full bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-semibold transition border border-blue-200">
+              हिन्दी: यूरिया व जिंक कब डालें?
+            </button>
+            <button type="button" data-sample="Current temperature aur soil moisture ke hisab se sinchai kab karein?" class="sample-chat-btn px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold transition border border-amber-200">
+              Hinglish: Temp &amp; Sinchai Schedule
+            </button>
+          </div>
+
+          <!-- Real-Time Canvas Audio Frequency Visualizer -->
+          <div id="voice-status-bar" class="hidden mt-2 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
+                <span class="text-xs font-bold text-emerald-900">Listening to Voice... Speak Naturally</span>
+              </div>
+              <button type="button" id="voice-stop-btn" class="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-700 transition">Stop Mic</button>
+            </div>
+            
+            <div class="w-full h-8 bg-emerald-900/10 rounded-xl overflow-hidden flex items-center justify-center p-1">
+              <canvas id="voice-canvas" width="300" height="32" class="w-full h-full"></canvas>
+            </div>
+            
+            <div id="voice-interim-text" class="text-xs italic text-slate-700 min-h-[16px] font-medium"></div>
+            
+            <div class="flex flex-wrap gap-1.5 pt-1">
+              <span class="text-[10px] font-bold text-emerald-800 self-center">Try Saying:</span>
+              <button type="button" data-vcmd="Temperature dikhao" class="voice-sim-cmd px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-[11px] font-bold text-emerald-900 hover:bg-emerald-100 shadow-2xs">🎙️ "Temperature dikhao"</button>
+              <button type="button" data-vcmd="Crop scanner kholo" class="voice-sim-cmd px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-[11px] font-bold text-emerald-900 hover:bg-emerald-100 shadow-2xs">🎙️ "Scan Wheat"</button>
+              <button type="button" data-vcmd="KVK Fatehgarh Sahib number" class="voice-sim-cmd px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-[11px] font-bold text-emerald-900 hover:bg-emerald-100 shadow-2xs">🎙️ "KVK Helpline"</button>
+            </div>
+          </div>
+
+          <!-- Chat Input Bar -->
+          <div class="pt-2 flex items-center gap-2">
+            <button type="button" id="mic-btn" title="Speak in Punjabi, Hindi, or Hinglish" class="w-11 h-11 shrink-0 rounded-xl bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 flex items-center justify-center text-xl transition border border-slate-200">
+              🎙️
+            </button>
+            <input type="text" id="chat-input" placeholder="Speak or type in ਪੰਜਾਬੀ, हिन्दी, or Hinglish..." class="flex-1 px-4 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 font-medium bg-white" />
+            <button type="button" id="chat-send-btn" class="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold transition shadow-sm">
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- AI Provider & API Key Configuration Modal -->
+  <div id="ai-settings-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+        <div>
+          <span class="text-xs font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">Intelligent Agro LLM</span>
+          <h3 class="text-lg font-bold text-slate-900 mt-1">⚙️ AI Provider &amp; API Key Settings</h3>
+          <p class="text-xs text-slate-500">Connect Google Gemini or OpenAI ChatGPT for live AI agronomist responses.</p>
+        </div>
+        <button type="button" id="close-ai-modal-x" class="text-slate-400 hover:text-slate-700 text-xl font-bold p-1">✕</button>
+      </div>
+
+      <!-- Active Engine Status Bar -->
+      <div id="ai-current-status-banner" class="rounded-2xl p-3.5 bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2.5">
+          <span id="ai-status-indicator-dot" class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          <div>
+            <div class="font-bold text-slate-900" id="ai-status-provider-text">Active Engine: Standalone Agro Engine</div>
+            <div class="text-[11px] text-slate-500" id="ai-status-detail-text">PAU &amp; ICAR Domain Expert Rules Active</div>
+          </div>
+        </div>
+        <span id="ai-status-badge" class="px-2.5 py-1 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300">Ready</span>
+      </div>
+
+      <!-- Provider Selection -->
+      <div class="space-y-1.5">
+        <label class="block text-xs font-bold text-slate-700">Select AI Provider</label>
+        <div class="grid grid-cols-2 gap-2.5">
+          <button type="button" id="select-provider-gemini" class="provider-select-btn p-3 rounded-2xl border-2 border-emerald-600 bg-emerald-50/50 text-left transition flex items-center gap-2.5">
+            <span class="text-xl">✨</span>
+            <div>
+              <div class="text-xs font-extrabold text-emerald-950">Google Gemini</div>
+              <div class="text-[10px] text-emerald-700">Gemini 2.5 / 1.5 Flash</div>
+            </div>
+          </button>
+          <button type="button" id="select-provider-openai" class="provider-select-btn p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-left transition flex items-center gap-2.5">
+            <span class="text-xl">⚡</span>
+            <div>
+              <div class="text-xs font-bold text-slate-900">OpenAI ChatGPT</div>
+              <div class="text-[10px] text-slate-500">GPT-4o / GPT-4o-mini</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Model Selection -->
+      <div class="space-y-1">
+        <label for="ai-model-select" class="block text-xs font-bold text-slate-700">Target Model</label>
+        <select id="ai-model-select" class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600">
+          <option value="gemini-2.5-flash">gemini-2.5-flash (Fast, Highly Accurate)</option>
+          <option value="gemini-1.5-flash">gemini-1.5-flash (Google Recommended)</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash (General Availability)</option>
+        </select>
+      </div>
+
+      <!-- API Key Input -->
+      <div class="space-y-1">
+        <div class="flex items-center justify-between">
+          <label for="ai-key-input" class="block text-xs font-bold text-slate-700">API Key</label>
+          <span class="text-[11px] text-slate-400">Validated against live endpoint</span>
+        </div>
+        <div class="relative">
+          <input type="password" id="ai-key-input" placeholder="Paste your API Key (AIzaSy... or sk-...)" class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-600 pr-16" />
+          <button type="button" id="toggle-key-visibility" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-800 font-semibold">Show</button>
+        </div>
+        <div class="text-[11px] text-slate-500 pt-1 flex items-center justify-between flex-wrap gap-2">
+          <span id="get-key-link-container">Get free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-emerald-700 font-bold underline">Google AI Studio ↗</a></span>
+          <button type="button" id="use-offline-btn" class="text-[11px] font-bold text-slate-600 hover:text-slate-900 underline">Switch to PAU Offline Engine</button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+        <button type="button" id="close-ai-modal-btn" class="px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition">Close</button>
+        <button type="button" id="save-ai-config-btn" class="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+          <span>✓</span>
+          <span id="save-ai-btn-text">Test &amp; Save API Key</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- SMS Gateway & Alert Configuration Modal -->
+  <div id="sms-settings-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+        <div>
+          <span class="text-xs font-extrabold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">Cellular SMS Engine</span>
+          <h3 class="text-lg font-bold text-slate-900 mt-1">📲 SMS Gateway &amp; Live OTP Setup</h3>
+          <p class="text-xs text-slate-500">Deliver real SMS text messages for farmer OTP verification and temperature alarms.</p>
+        </div>
+        <button type="button" id="close-sms-modal-x" class="text-slate-400 hover:text-slate-700 text-xl font-bold p-1">✕</button>
+      </div>
+
+      <!-- Current Gateway Status Banner -->
+      <div id="sms-current-status-banner" class="rounded-2xl p-3.5 bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2.5">
+          <span id="sms-status-indicator-dot" class="w-3 h-3 rounded-full bg-blue-500"></span>
+          <div>
+            <div class="font-bold text-slate-900" id="sms-status-provider-text">Active: Server Simulation Mode</div>
+            <div class="text-[11px] text-slate-500" id="sms-status-detail-text">OTPs &amp; alerts logged securely in server console</div>
+          </div>
+        </div>
+        <span id="sms-status-badge" class="px-2.5 py-1 rounded-full font-bold text-[10px] bg-blue-100 text-blue-800 border border-blue-300">Sandbox Ready</span>
+      </div>
+
+      <!-- Provider Selection -->
+      <div class="space-y-1.5">
+        <label class="block text-xs font-bold text-slate-700">Select SMS Gateway Provider</label>
+        <div class="grid grid-cols-2 gap-2.5">
+          <button type="button" id="select-sms-fast2sms" class="sms-provider-btn p-3 rounded-2xl border-2 border-blue-600 bg-blue-50/50 text-left transition flex items-center gap-2.5">
+            <span class="text-xl">🇮🇳</span>
+            <div>
+              <div class="text-xs font-extrabold text-blue-950">Fast2SMS (India)</div>
+              <div class="text-[10px] text-blue-700">Instant Free Indian SMS</div>
+            </div>
+          </button>
+          <button type="button" id="select-sms-twilio" class="sms-provider-btn p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-left transition flex items-center gap-2.5">
+            <span class="text-xl">🌍</span>
+            <div>
+              <div class="text-xs font-bold text-slate-900">Twilio (Global)</div>
+              <div class="text-[10px] text-slate-500">International / India</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Fast2SMS Configuration Form -->
+      <div id="fast2sms-form-block" class="space-y-2.5">
+        <div>
+          <div class="flex items-center justify-between">
+            <label for="fast2sms-key-input" class="block text-xs font-bold text-slate-700">Fast2SMS Dev API Key</label>
+            <span class="text-[11px] text-slate-400">Zero DLT registration required</span>
+          </div>
+          <input type="password" id="fast2sms-key-input" placeholder="Paste your Fast2SMS API Key" class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-blue-600" />
+        </div>
+        <div class="text-[11px] text-slate-500 p-2.5 rounded-xl bg-blue-50/60 border border-blue-200">
+          💡 <strong>How to get free key in 1 minute:</strong> Sign up for free at <a href="https://www.fast2sms.com" target="_blank" rel="noopener noreferrer" class="text-blue-700 font-bold underline">fast2sms.com ↗</a>. Go to "Dev API" tab, copy the API key, and paste it here.
+        </div>
+      </div>
+
+      <!-- Twilio Configuration Form (Initially Hidden) -->
+      <div id="twilio-form-block" class="hidden space-y-2">
+        <div>
+          <label for="twilio-sid-input" class="block text-xs font-bold text-slate-700">Twilio Account SID</label>
+          <input type="text" id="twilio-sid-input" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-blue-600" />
+        </div>
+        <div>
+          <label for="twilio-token-input" class="block text-xs font-bold text-slate-700">Twilio Auth Token</label>
+          <input type="password" id="twilio-token-input" placeholder="Your Twilio Auth Token" class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-blue-600" />
+        </div>
+        <div>
+          <label for="twilio-phone-input" class="block text-xs font-bold text-slate-700">Twilio Phone Number</label>
+          <input type="tel" id="twilio-phone-input" placeholder="+1234567890" class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-blue-600" />
+        </div>
+      </div>
+
+      <!-- Live Test Phone Input -->
+      <div>
+        <label for="sms-test-phone" class="block text-xs font-bold text-slate-700 mb-1">Test Recipient Mobile (10 Digits)</label>
+        <div class="flex gap-2">
+          <input type="tel" id="sms-test-phone" placeholder="e.g. 9876543210 (Your Phone)" pattern="[6-9][0-9]{9}" class="flex-1 px-3.5 py-2 text-xs rounded-xl border border-slate-300 font-mono focus:outline-none focus:ring-2 focus:ring-blue-600" />
+          <button type="button" id="use-simulation-sms-btn" class="px-3 py-2 text-[11px] font-bold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl bg-slate-50 transition">
+            Use Sandbox Simulation
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+        <button type="button" id="close-sms-modal-btn" class="px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition">Close</button>
+        <button type="button" id="save-sms-config-btn" class="px-5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+          <span>📲</span>
+          <span id="save-sms-btn-text">Test &amp; Save SMS Gateway</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Books Reader Modal Dialog -->
+  <div id="book-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+        <div>
+          <span id="modal-book-cat" class="text-xs font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200"></span>
+          <h3 id="modal-book-title" class="text-lg font-bold text-slate-900 mt-1"></h3>
+        </div>
+        <button type="button" id="close-book-modal" class="text-slate-400 hover:text-slate-700 text-xl font-bold p-1">✕</button>
+      </div>
+
+      <div id="modal-book-content" class="text-sm text-slate-700 leading-relaxed max-h-80 overflow-y-auto bg-slate-50/80 p-5 rounded-2xl border border-slate-200 space-y-2.5"></div>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+        <button type="button" id="modal-read-aloud-btn" class="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs">
+          <span>🔊</span><span>Read Aloud</span>
+        </button>
+        <button type="button" id="close-book-modal-btn" class="px-5 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold hover:bg-emerald-800 transition shadow-sm">
+          Close Reader
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 py-6 mt-12 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-2 font-semibold text-slate-700">
+        <span>🌾 Kisan AI Precision Platform</span>
+        <span>•</span>
+        <span>PAU Ludhiana &amp; ICAR Integrated</span>
+      </div>
+      <div>Designed for Punjab, Haryana &amp; North Indian Agricultural Productivity</div>
+    </div>
+  </footer>
+
+  <!-- Application Modular Scripts -->
+  <script src="/js/telemetry.js"></script>
+  <script src="/js/scanner.js"></script>
+  <script src="/js/support.js"></script>
+  <script src="/js/chatbot.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

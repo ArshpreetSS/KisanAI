@@ -1,0 +1,217 @@
+/* ==============================================================
+   Kisan AI — Professional Agricultural Technology Stylesheet
+   Designed for High Legibility, Accessibility & Agro-Tech Elegance
+   ============================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&family=Noto+Sans+Gurmukhi:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap');
+
+:root {
+  --agri-dark: #064e3b;
+  --agri-primary: #15803d;
+  --agri-primary-hover: #166534;
+  --agri-light: #f0fdf4;
+  --agri-accent: #d97706;
+  --agri-border: #e2e8f0;
+  --agri-card-bg: rgba(255, 255, 255, 0.92);
+  --agri-surface: #f8fafc;
+}
+
+body {
+  font-family: 'Inter', 'Noto Sans Gurmukhi', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: radial-gradient(circle at 10% 20%, rgba(240, 253, 244, 0.8) 0%, rgba(248, 250, 252, 1) 90%);
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+.font-mono-numbers {
+  font-family: 'JetBrains Mono', monospace;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Custom Smooth Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Tab Navigation Active State */
+.tab-btn {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid transparent;
+}
+.tab-btn.tab-active {
+  background: linear-gradient(135deg, #15803d, #166534) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 16px -2px rgba(21, 128, 61, 0.35);
+  border-color: #166534;
+  transform: translateY(-1px);
+}
+
+/* Pulse Glow & Scanner Reticle Animations */
+@keyframes scanSweep {
+  0% { top: 6%; opacity: 0.9; }
+  50% { top: 92%; opacity: 1; }
+  100% { top: 6%; opacity: 0.9; }
+}
+
+.scan-line-anim {
+  animation: scanSweep 2s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.06); }
+}
+
+.pulse-indicator {
+  animation: pulseGlow 1.8s infinite;
+}
+
+/* High Contrast & Clean Badges */
+.badge-soft-green {
+  background-color: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.badge-soft-amber {
+  background-color: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.badge-soft-blue {
+  background-color: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+.badge-soft-red {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* Card Transitions & Glassmorphism */
+.agri-card {
+  background-color: var(--agri-card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
+}
+.agri-card:hover {
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.07), 0 3px 6px -3px rgba(0, 0, 0, 0.04);
+}
+
+/* Modern 4-Box OTP Input */
+.otp-digit-box {
+  width: 3.5rem;
+  height: 3.5rem;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  color: #0f172a;
+  background-color: #ffffff;
+  border: 2px solid #cbd5e1;
+  border-radius: 1rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+.otp-digit-box:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.15);
+  transform: translateY(-2px);
+}
+.otp-digit-box.filled {
+  border-color: #15803d;
+  background-color: #f0fdf4;
+}
+
+/* Chat Bubbles */
+.chat-bubble-user {
+  background: linear-gradient(135deg, #15803d, #166534);
+  color: #ffffff;
+  border-bottom-right-radius: 0.25rem;
+  box-shadow: 0 2px 8px rgba(21, 128, 61, 0.2);
+}
+.chat-bubble-ai {
+  background-color: #ffffff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-bottom-left-radius: 0.25rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Circular SVG Gauges */
+.gauge-circle-bg {
+  fill: none;
+  stroke: #f1f5f9;
+  stroke-width: 8;
+}
+.gauge-circle-bar {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Camera HUD Viewfinder Styling */
+.camera-hud-frame {
+  position: relative;
+  background-color: #090d16;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.8);
+}
+.hud-corner {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-color: #22c55e;
+  pointer-events: none;
+  z-index: 10;
+}
+.hud-corner-tl { top: 16px; left: 16px; border-top: 3px solid #22c55e; border-left: 3px solid #22c55e; border-top-left-radius: 4px; }
+.hud-corner-tr { top: 16px; right: 16px; border-top: 3px solid #22c55e; border-right: 3px solid #22c55e; border-top-right-radius: 4px; }
+.hud-corner-bl { bottom: 16px; left: 16px; border-bottom: 3px solid #22c55e; border-left: 3px solid #22c55e; border-bottom-left-radius: 4px; }
+.hud-corner-br { bottom: 16px; right: 16px; border-bottom: 3px solid #22c55e; border-right: 3px solid #22c55e; border-bottom-right-radius: 4px; }
+
+.hud-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60px;
+  height: 60px;
+  border: 1px dashed rgba(34, 197, 94, 0.6);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Toast Animation */
+.toast-slide-in {
+  animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

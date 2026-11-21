@@ -1,0 +1,18 @@
+services:
+  kisan-ai:
+    build: .
+    container_name: kisan-ai-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - DEFAULT_LAT=30.6433
+      - DEFAULT_LON=76.3887
+      - FAST2SMS_API_KEY=${FAST2SMS_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
