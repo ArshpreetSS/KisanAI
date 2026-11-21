@@ -9,6 +9,8 @@ window.ChatbotModule = (function () {
     registeredFarmer: null,
     ttsEnabled: true,
     isListening: false,
+    isProcessingMessage: false,
+    activeAbortController: null,
     activeRecognition: null,
     audioContext: null,
     analyserNode: null,
@@ -255,6 +257,46 @@ window.ChatbotModule = (function () {
       .replace(/^([0-9]+)\. (.*$)/gim, '<div class="flex items-start gap-1.5 my-0.5"><span class="font-bold text-emerald-800 shrink-0 font-mono-numbers">$1.</span><span>$2</span></div>');
   }
 
+  function setInputEnabled(enabled) {
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('chat-send-btn');
+    const micBtn = document.getElementById('mic-btn');
+    if (input) {
+      input.disabled = !enabled;
+      if (enabled) input.focus();
+    }
+    if (sendBtn) {
+      sendBtn.disabled = !enabled;
+      sendBtn.innerHTML = enabled ? 'Send' : '<span class="inline-block animate-spin mr-1.5">⌛</span><span>Thinking...</span>';
+      if (!enabled) {
+        sendBtn.classList.add('opacity-75', 'cursor-not-allowed');
+      } else {
+        sendBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+      }
+    }
+    if (micBtn) {
+      micBtn.disabled = !enabled;
+      if (!enabled) {
+        micBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      } else {
+        micBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+    }
+  }
+
+  function getLocalizedErrorMessage(lang, customMsg = '') {
+    if (customMsg && typeof customMsg === 'string' && customMsg.trim()) {
+      return customMsg.trim();
+    }
+    if (lang === 'gurmukhi') {
+      return 'ਖਿਮਾ ਕਰਨਾ, ਏਆਈ ਸੇਵਾ ਇਸ ਵੇਲੇ ਵਿਅਸਤ ਹੈ (ਸਰਵਰ ਟ੍ਰੈਫਿਕ ਜਾਂ ਸਮਾਂ ਸਮਾਪਤ)। ਕਿਰਪਾ ਕਰਕੇ ਹੇਠਾਂ ਦਿੱਤੇ ਬਟਨ \'ਤੇ ਕਲਿੱਕ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।';
+    }
+    if (lang === 'hindi') {
+      return 'क्षमा करें, एआई सेवा इस समय व्यस्त है या उत्तर देने में समय ले रही है। कृपया नीचे दिए गए "पुनः प्रयास करें" बटन पर क्लिक करें।';
+    }
+    return 'AI service is temporarily experiencing high traffic or took too long to respond. Please tap Retry below or ask again in a moment.';
+  }
+
   function renderChat() {
     const box = document.getElementById('chat-messages');
     if (!box) return;
@@ -263,13 +305,45 @@ window.ChatbotModule = (function () {
       const isUser = m.role === 'user';
       if (m.isLoading) {
         return `
-          <div class="flex justify-start">
+          <div class="flex justify-start items-start gap-2.5">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm shadow-2xs select-none bg-emerald-100 border border-emerald-300 text-emerald-950">
+              🌾
+            </div>
             <div class="max-w-[85%] rounded-2xl px-4 py-3 text-sm chat-bubble-ai border border-slate-200">
               <div class="flex items-center gap-2 py-1 text-slate-500">
                 <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
                 <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse [animation-delay:200ms]"></span>
                 <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse [animation-delay:400ms]"></span>
                 <span class="text-xs font-semibold text-emerald-800 ml-1">Kisan AI is analyzing with Gemini...</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (m.isError) {
+        return `
+          <div class="flex items-start gap-2.5">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm shadow-2xs select-none bg-amber-100 border border-amber-300 text-amber-950">
+              ⚠️
+            </div>
+            <div class="max-w-[85%] sm:max-w-[78%] rounded-2xl px-4 py-3 text-sm chat-bubble-ai border border-amber-200 bg-amber-50/50">
+              ${m.langTag ? `<div class="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 mb-1.5 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span><span>${m.langTag}</span></div>` : ''}
+              <div class="leading-relaxed whitespace-pre-line text-slate-800">${formatMarkdown(m.text)}</div>
+              <div class="mt-3 pt-2 border-t border-amber-200 flex items-center justify-between gap-2 flex-wrap">
+                <div class="flex items-center gap-2">
+                  ${m.retryText ? `
+                    <button type="button" class="retry-chat-btn px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs hover:scale-105 active:scale-95" data-query="${encodeURIComponent(m.retryText)}">
+                      <span>🔄</span><span>Retry Question</span>
+                    </button>
+                    <button type="button" class="edit-query-btn px-3 py-1.5 rounded-xl border border-amber-300 bg-white hover:bg-amber-50 text-amber-900 text-xs font-semibold transition flex items-center gap-1 shadow-2xs hover:scale-105 active:scale-95" data-query="${encodeURIComponent(m.retryText)}">
+                      <span>✏️</span><span>Edit Question</span>
+                    </button>
+                  ` : ''}
+                </div>
+                <button type="button" class="copy-chat-btn text-[11px] font-bold text-slate-500 hover:text-emerald-800 flex items-center gap-1 transition px-2 py-0.5 rounded-lg hover:bg-slate-100" data-idx="${idx}">
+                  <span>📋</span><span>Copy</span>
+                </button>
               </div>
             </div>
           </div>
@@ -286,7 +360,7 @@ window.ChatbotModule = (function () {
             <div class="leading-relaxed whitespace-pre-line">${isUser ? m.text : formatMarkdown(m.text)}</div>
             ${!isUser ? `
               <div class="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                <span class="text-[10px] font-medium">Google Gemini 3.8</span>
+                <span class="text-[10px] font-medium">Google Gemini</span>
                 <button type="button" class="copy-chat-btn text-[11px] font-bold text-slate-500 hover:text-emerald-800 flex items-center gap-1 transition px-2 py-0.5 rounded-lg hover:bg-slate-100" data-idx="${idx}">
                   <span>📋</span><span>Copy</span>
                 </button>
@@ -305,6 +379,27 @@ window.ChatbotModule = (function () {
           navigator.clipboard.writeText(msg.text).then(() => {
             window.KisanApp?.showToast('Copied to Clipboard', 'Advisory response copied.', 'success');
           }).catch(() => {});
+        }
+      });
+    });
+
+    box.querySelectorAll('.retry-chat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const query = decodeURIComponent(btn.dataset.query || '').trim();
+        if (query) {
+          submitMessage(query);
+        }
+      });
+    });
+
+    box.querySelectorAll('.edit-query-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const query = decodeURIComponent(btn.dataset.query || '').trim();
+        const input = document.getElementById('chat-input');
+        if (input && query) {
+          input.value = query;
+          input.focus();
+          window.KisanApp?.showToast('Question Restored', 'Your question has been restored to the input box.', 'info');
         }
       });
     });
@@ -334,15 +429,17 @@ window.ChatbotModule = (function () {
     const clean = (userText || '').trim();
     if (!clean) return;
 
+    // Prevent duplicate simultaneous requests
     if (state.isProcessingMessage) return;
     state.isProcessingMessage = true;
+    setInputEnabled(false);
 
     const detectedLang = detectScript(clean);
     const langLabel = detectedLang === 'gurmukhi' ? 'ਪੰਜਾਬੀ (Gurmukhi)' : detectedLang === 'hindi' ? 'हिन्दी (Devanagari)' : (detectedLang === 'english' ? 'English' : 'Hinglish');
 
     // Extract recent conversation history for multi-turn context (up to 6 turns)
     const conversationHistory = state.chatHistory
-      .filter(m => m.text && !m.isLoading && m.text !== 'Analyzing agricultural data & formulating response...')
+      .filter(m => m.text && !m.isLoading && !m.isError && m.text !== 'Analyzing agricultural data & formulating response...')
       .slice(-6)
       .map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
@@ -374,6 +471,17 @@ window.ChatbotModule = (function () {
       lastScan
     };
 
+    // Set up AbortController with 45-second timeout
+    if (state.activeAbortController) {
+      try { state.activeAbortController.abort(); } catch (e) {}
+      state.activeAbortController = null;
+    }
+    const controller = new AbortController();
+    state.activeAbortController = controller;
+    const timeoutTimer = setTimeout(() => {
+      controller.abort(new Error('REQUEST_TIMEOUT'));
+    }, 45000);
+
     try {
       const headers = { 'Content-Type': 'application/json' };
       const authToken = window.AuthModule?.getSession()?.access_token;
@@ -382,6 +490,7 @@ window.ChatbotModule = (function () {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers,
+        signal: controller.signal,
         body: JSON.stringify({
           message: clean,
           language: detectedLang,
@@ -390,13 +499,27 @@ window.ChatbotModule = (function () {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        const errorReply = data?.reply || data?.message || `HTTP ${res.status} Error from Gemini 3.8 service.`;
-        const errorSource = data?.source || 'Google Gemini 3.8 Flash (Error)';
+      // Safely parse JSON even if proxy/gateway returned non-JSON HTML (e.g. 502/504)
+      const rawText = await res.text();
+      let data = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        data = {
+          error: true,
+          status: res.status,
+          message: `Server returned HTTP ${res.status}: ${rawText.substring(0, 150)}`
+        };
+      }
+
+      if (!res.ok || data.error || !data.reply) {
+        const errorReply = data?.reply || data?.message || getLocalizedErrorMessage(detectedLang);
+        const errorSource = data?.source || 'Google Gemini Service Notice';
         state.chatHistory[pendingIdx] = {
           role: 'ai',
           isLoading: false,
+          isError: true,
+          retryText: clean,
           text: errorReply,
           langTag: `Kisan AI • ${errorSource}`
         };
@@ -404,12 +527,13 @@ window.ChatbotModule = (function () {
         return;
       }
 
-      const reply = data.reply || 'Advisory formulated.';
-      const sourceBadge = data.source ? `Kisan AI • ${data.source}` : `Kisan AI • Google Gemini 3.8 Flash`;
+      const reply = data.reply;
+      const sourceBadge = data.source ? `Kisan AI • ${data.source}` : `Kisan AI • Google Gemini`;
 
       state.chatHistory[pendingIdx] = {
         role: 'ai',
         isLoading: false,
+        isError: false,
         text: reply,
         langTag: sourceBadge
       };
@@ -417,16 +541,47 @@ window.ChatbotModule = (function () {
       speakReply(reply, detectedLang);
     } catch (err) {
       console.warn('Chat request error:', err);
-      const fallbackText = `⚠️ Google Gemini 3.8 Connection Error:\n${err.message || 'Could not connect to Gemini service.'}\n\nPlease verify your GEMINI_API_KEY environment variable.`;
+      const isTimeout = err.name === 'AbortError' || err.message === 'REQUEST_TIMEOUT';
+      const timeoutMsg = detectedLang === 'gurmukhi'
+        ? 'ਬੇਨਤੀ ਦਾ ਸਮਾਂ ਸਮਾਪਤ ਹੋ ਗਿਆ ਹੈ (Timeout)। ਕਿਰਪਾ ਕਰਕੇ ਹੇਠਾਂ ਦਿੱਤੇ ਬਟਨ \'ਤੇ ਕਲਿੱਕ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।'
+        : (detectedLang === 'hindi'
+          ? 'अनुरोध का समय समाप्त हो गया (Timeout)। कृपया पुनः प्रयास करने के लिए नीचे क्लिक करें।'
+          : 'Request timed out while connecting to Google Gemini. Tap Retry to send your question again.');
+
+      const fallbackText = isTimeout ? timeoutMsg : getLocalizedErrorMessage(detectedLang, err.message);
       state.chatHistory[pendingIdx] = {
         role: 'ai',
         isLoading: false,
+        isError: true,
+        retryText: clean,
         text: fallbackText,
-        langTag: `Kisan AI • Google Gemini 3.8 Error`
+        langTag: isTimeout ? 'Kisan AI • Request Timeout (45s)' : 'Kisan AI • Network Notice'
       };
       renderChat();
     } finally {
+      clearTimeout(timeoutTimer);
+      if (state.activeAbortController === controller) {
+        state.activeAbortController = null;
+      }
       state.isProcessingMessage = false;
+      setInputEnabled(true);
+
+      // GUARANTEE: Never leave ANY message stuck with isLoading: true
+      let needsRerender = false;
+      state.chatHistory.forEach(m => {
+        if (m && m.isLoading) {
+          m.isLoading = false;
+          if (!m.text) {
+            m.text = getLocalizedErrorMessage(detectedLang);
+            m.isError = true;
+            m.retryText = clean;
+          }
+          needsRerender = true;
+        }
+      });
+      if (needsRerender) {
+        renderChat();
+      }
     }
   }
 

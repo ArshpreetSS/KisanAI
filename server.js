@@ -1254,24 +1254,34 @@ async function invokeLiveGemini(cleanMsg, detectedLang, context = {}, history = 
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const response = await fetch(geminiEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': geminiKey
-          },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{ text: systemInstructionText }]
+        // Enforce 10-second provider timeout so a stalled Google request never hangs Express
+        const fetchController = new AbortController();
+        const timeoutTimer = setTimeout(() => fetchController.abort(new Error('PROVIDER_TIMEOUT')), 10000);
+
+        let response;
+        try {
+          response = await fetch(geminiEndpoint, {
+            method: 'POST',
+            signal: fetchController.signal,
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': geminiKey
             },
-            contents,
-            generationConfig: {
-              temperature: 0.35,
-              topP: 0.95,
-              maxOutputTokens: 1024
-            }
-          })
-        });
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: systemInstructionText }]
+              },
+              contents,
+              generationConfig: {
+                temperature: 0.35,
+                topP: 0.95,
+                maxOutputTokens: 1024
+              }
+            })
+          });
+        } finally {
+          clearTimeout(timeoutTimer);
+        }
 
         if (response.ok) {
           const data = await response.json();
@@ -1319,20 +1329,29 @@ async function invokeLiveGemini(cleanMsg, detectedLang, context = {}, history = 
         if (response.status === 400) {
           if (attempt === 1) {
             try {
-              const retry400 = await fetch(geminiEndpoint, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-goog-api-key': geminiKey
-                },
-                body: JSON.stringify({
-                  contents: [
-                    { role: 'user', parts: [{ text: `${systemInstructionText}\n\nFarmer Query: ${cleanMsg}` }] }
-                  ],
-                  generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
-                })
-              });
-              if (retry400.ok) {
+              const retryController = new AbortController();
+              const retryTimer = setTimeout(() => retryController.abort(new Error('PROVIDER_TIMEOUT')), 8000);
+              let retry400;
+              try {
+                retry400 = await fetch(geminiEndpoint, {
+                  method: 'POST',
+                  signal: retryController.signal,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': geminiKey
+                  },
+                  body: JSON.stringify({
+                    contents: [
+                      { role: 'user', parts: [{ text: `${systemInstructionText}\n\nFarmer Query: ${cleanMsg}` }] }
+                    ],
+                    generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
+                  })
+                });
+              } finally {
+                clearTimeout(retryTimer);
+              }
+
+              if (retry400 && retry400.ok) {
                 const data400 = await retry400.json();
                 const text400 = data400?.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (text400) {
@@ -1364,9 +1383,12 @@ async function invokeLiveGemini(cleanMsg, detectedLang, context = {}, history = 
       } catch (connErr) {
         if (connErr.category === 'CATEGORY_AUTHENTICATION_ERROR') throw connErr;
 
-        lastError = `Connection error with ${model}: ${connErr.message}`;
-        lastCategory = 'CATEGORY_NETWORK_ERROR';
-        console.warn(`[GEMINI API] [Req: ${reqId}] Connection error with ${model} on attempt ${attempt}:`, connErr.message);
+        const isTimeout = connErr.name === 'AbortError' || connErr.message === 'PROVIDER_TIMEOUT';
+        lastError = isTimeout
+          ? `Provider timeout with ${model} after 10s`
+          : `Connection error with ${model}: ${connErr.message}`;
+        lastCategory = isTimeout ? 'CATEGORY_TEMPORARY_PROVIDER_OUTAGE' : 'CATEGORY_NETWORK_ERROR';
+        console.warn(`[GEMINI API] [Req: ${reqId}] ${lastError} on attempt ${attempt}`);
 
         if (attempt < maxAttempts) {
           const pauseMs = calculateBackoffWithJitter(attempt);
@@ -1386,8 +1408,18 @@ async function invokeLiveGemini(cleanMsg, detectedLang, context = {}, history = 
   throw finalError;
 }
 
+app.options(['/api/chat', '/.netlify/functions/gemini-chat'], (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  return res.sendStatus(204);
+});
+
 app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
   const correlationId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'application/json');
+
   try {
     const { message, language, context, history } = req.body;
     if (!message || typeof message !== 'string') {
@@ -1434,7 +1466,7 @@ app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
         });
       }
 
-      // Handle Temporary High Demand / Outage (503 / 429 / 500 / 502 / 504)
+      // Handle Temporary High Demand / Outage (503 / 429 / 500 / 502 / 504 / Provider Timeout)
       if (isRetryableGeminiStatus(status) || category === 'CATEGORY_TEMPORARY_PROVIDER_OUTAGE' || category === 'CATEGORY_RATE_LIMIT_EXCEEDED') {
         return res.status(503).json({
           success: false,
@@ -1494,13 +1526,15 @@ app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
     }
   } catch (error) {
     console.error(`Error in /api/chat [Req: ${correlationId}]:`, error);
-    return res.status(500).json({
-      success: false,
-      error: true,
-      category: 'CATEGORY_INTERNAL_SERVER_ERROR',
-      message: 'Internal server error while processing chat message.',
-      correlationId
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        error: true,
+        category: 'CATEGORY_INTERNAL_SERVER_ERROR',
+        message: 'Internal server error while processing chat message.',
+        correlationId
+      });
+    }
   }
 });
 
