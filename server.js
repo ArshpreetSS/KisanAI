@@ -111,9 +111,12 @@ function getOpenAIApiKey() {
 function getGeminiModels() {
   const primary = (process.env.GEMINI_PRIMARY_MODEL || 'gemini-3.8-flash').trim();
   const fallback = (process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite').trim();
-  const models = [primary];
-  if (fallback && fallback !== primary) {
-    models.push(fallback);
+  const candidates = [primary, 'gemini-3.6-flash', fallback];
+  const models = [];
+  for (const m of candidates) {
+    if (m && !models.includes(m)) {
+      models.push(m);
+    }
   }
   return { primary, fallback, models };
 }
@@ -1370,12 +1373,19 @@ async function invokeLiveGemini(cleanMsg, detectedLang, context = {}, history = 
         }
 
         // Transient errors: 503 (high demand), 429 (rate limit), 500/502/504
-        if (isRetryableGeminiStatus(response.status) && attempt < maxAttempts) {
-          const retryAfter = response.headers.get('retry-after');
-          const pauseMs = calculateBackoffWithJitter(attempt, retryAfter);
-          console.log(`[GEMINI API] [Req: ${reqId}] Transient ${response.status} on ${model}. Pausing ${pauseMs}ms with jitter before attempt ${attempt + 1}...`);
-          await wait(pauseMs);
-          continue;
+        if (isRetryableGeminiStatus(response.status)) {
+          // If 503 (high demand) and another model is available, fast-failover to avoid user delay
+          if (response.status === 503 && mIdx < models.length - 1) {
+            console.log(`[GEMINI API] [Req: ${reqId}] Model ${model} is experiencing high demand (503). Fast-failing over to ${models[mIdx + 1]}...`);
+            break;
+          }
+          if (attempt < maxAttempts) {
+            const retryAfter = response.headers.get('retry-after');
+            const pauseMs = calculateBackoffWithJitter(attempt, retryAfter);
+            console.log(`[GEMINI API] [Req: ${reqId}] Transient ${response.status} on ${model}. Pausing ${pauseMs}ms with jitter before attempt ${attempt + 1}...`);
+            await wait(pauseMs);
+            continue;
+          }
         }
 
         // Exhausted attempts on this model; proceed to next model in loop
