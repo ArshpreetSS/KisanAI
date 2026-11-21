@@ -9,7 +9,9 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "lint": "node -c server.js && node -c api/index.js",
+    "test": "node -c server.js && node -c api/index.js"
   },
   "keywords": [
     "agritech",
