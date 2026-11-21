@@ -57,22 +57,30 @@
 
 Kisan AI is 100% production-ready and can be deployed anywhere with one command:
 
-### 1. Docker & Docker Compose
+### 1. Vercel Serverless (Recommended)
+Kisan AI is pre-configured for instant zero-configuration deployment on Vercel:
+1. Go to [vercel.com/new](https://vercel.com/new) and select **`ArshpreetSS/KisanAI`**.
+2. Framework Preset: **Other** (Vercel automatically detects `vercel.json`).
+3. Root Directory: `./` (leave default).
+4. Environment Variables: Add `GEMINI_API_KEY` (optional) or `OPENAI_API_KEY` (optional).
+5. Click **Deploy**!
+
+### 2. Docker & Docker Compose
 ```bash
 docker compose up --build -d
 ```
 Includes built-in health check polling `http://localhost:3000/health`.
 
-### 2. Standard Node.js Production
+### 3. Standard Node.js Production
 ```bash
 npm install
 npm start
 ```
 
-### 3. Render / Railway / Heroku
+### 4. Render / Railway / Heroku
 A `Procfile` is provided (`web: node server.js`). Simply connect your Git repository and deploy.
 
-### 4. Netlify
+### 5. Netlify
 Serverless functions configured in `netlify/functions/` and routed via `netlify.toml`.
 
 ---
