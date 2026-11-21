@@ -360,7 +360,7 @@ window.ChatbotModule = (function () {
             <div class="leading-relaxed whitespace-pre-line">${isUser ? m.text : formatMarkdown(m.text)}</div>
             ${!isUser ? `
               <div class="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                <span class="text-[10px] font-medium">Google Gemini</span>
+                <span class="text-[10px] font-medium">${m.providerLabel || 'Google Gemini'}</span>
                 <button type="button" class="copy-chat-btn text-[11px] font-bold text-slate-500 hover:text-emerald-800 flex items-center gap-1 transition px-2 py-0.5 rounded-lg hover:bg-slate-100" data-idx="${idx}">
                   <span>📋</span><span>Copy</span>
                 </button>
@@ -528,13 +528,17 @@ window.ChatbotModule = (function () {
       }
 
       const reply = data.reply;
-      const sourceBadge = data.source ? `Kisan AI • ${data.source}` : `Kisan AI • Google Gemini`;
+      const isFallback = data.provider === 'openai' || data.fallbackTriggered;
+      const providerLabel = data.source || (isFallback ? `OpenAI (${data.model || 'gpt-6-sol'})` : `Google Gemini (${data.model || 'gemini-3.8-flash'})`);
+      const sourceBadge = `Kisan AI • ${providerLabel}`;
 
       state.chatHistory[pendingIdx] = {
         role: 'ai',
         isLoading: false,
         isError: false,
         text: reply,
+        provider: data.provider || (isFallback ? 'openai' : 'gemini'),
+        providerLabel,
         langTag: sourceBadge
       };
       renderChat();

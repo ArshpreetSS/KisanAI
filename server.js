@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
 require('dotenv').config();
 
 const app = express();
@@ -107,6 +108,24 @@ function getOpenAIApiKey() {
   return key && typeof key === 'string' && key.trim() !== '' ? key.trim().replace(/^['"]|['"]$/g, '') : null;
 }
 
+function getOpenAIFallbackModel() {
+  const model = process.env.OPENAI_FALLBACK_MODEL || process.env.OPENAI_MODEL;
+  return model && typeof model === 'string' && model.trim() !== '' ? model.trim() : 'gpt-6-sol';
+}
+
+let cachedOpenAIClient = null;
+let lastOpenAIKey = null;
+
+function getOpenAIClient() {
+  const apiKey = getOpenAIApiKey();
+  if (!apiKey) return null;
+  if (!cachedOpenAIClient || lastOpenAIKey !== apiKey) {
+    cachedOpenAIClient = new OpenAI({ apiKey });
+    lastOpenAIKey = apiKey;
+  }
+  return cachedOpenAIClient;
+}
+
 // Configurable Gemini Model Configuration
 function getGeminiModels() {
   const primary = (process.env.GEMINI_PRIMARY_MODEL || 'gemini-3.8-flash').trim();
@@ -124,10 +143,18 @@ function getGeminiModels() {
 // Health check endpoint
 app.get(['/health', '/api/health'], (req, res) => {
   const geminiKey = getGeminiApiKey();
+  const openAIKey = getOpenAIApiKey();
   const { primary, fallback } = getGeminiModels();
-  const activeAi = geminiKey
-    ? `Google Gemini (${primary})`
-    : `Google Gemini (${primary}) (Key Missing)`;
+  const openAIFallbackModel = getOpenAIFallbackModel();
+
+  let activeAi = 'Offline / Unconfigured';
+  if (geminiKey && openAIKey) {
+    activeAi = `Primary: Google Gemini (${primary}) + Fallback: OpenAI (${openAIFallbackModel})`;
+  } else if (geminiKey) {
+    activeAi = `Primary: Google Gemini (${primary}) (OpenAI Key Missing)`;
+  } else if (openAIKey) {
+    activeAi = `Fallback: OpenAI (${openAIFallbackModel}) (Gemini Key Missing)`;
+  }
 
   const { isConfigured: supabaseConfigured } = getSupabaseServerClient();
 
@@ -137,9 +164,12 @@ app.get(['/health', '/api/health'], (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'production',
     activeAiProvider: activeAi,
+    primaryProvider: 'gemini',
+    fallbackProvider: 'openai',
     geminiConfigured: Boolean(geminiKey),
     primaryModel: primary,
-    fallbackModel: fallback,
+    openAIConfigured: Boolean(openAIKey),
+    openAIFallbackModel,
     model: primary,
     smsGatewayConfigured: Boolean(process.env.FAST2SMS_API_KEY || process.env.TWILIO_ACCOUNT_SID),
     supabaseConfigured
@@ -1415,7 +1445,123 @@ async function invokeLiveGemini(cleanMsg, detectedLang, context = {}, history = 
   finalError.status = lastStatus;
   finalError.category = lastCategory;
   finalError.correlationId = reqId;
+  finalError.model = models[0] || 'gemini-3.8-flash';
   throw finalError;
+}
+
+// OpenAI Fallback Invoker using official OpenAI SDK Responses API
+async function invokeOpenAIFallback(cleanMsg, detectedLang, context = {}, history = [], correlationId = '') {
+  const reqId = correlationId || `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const openAIKey = getOpenAIApiKey();
+  if (!openAIKey) {
+    const err = new Error('OPENAI_API_KEY environment variable is missing.');
+    err.status = 401;
+    err.category = 'CATEGORY_AUTHENTICATION_ERROR';
+    err.correlationId = reqId;
+    err.provider = 'openai';
+    throw err;
+  }
+
+  const model = getOpenAIFallbackModel();
+  const systemInstructionText = buildAgriculturalSystemPrompt(detectedLang, context);
+  const client = getOpenAIClient();
+
+  const messages = [];
+  if (Array.isArray(history) && history.length > 0) {
+    const validTurns = history.slice(-6).filter(t => t && t.text && typeof t.text === 'string' && t.text.trim());
+    for (const turn of validTurns) {
+      messages.push({
+        role: turn.role === 'model' || turn.role === 'ai' || turn.role === 'assistant' ? 'assistant' : 'user',
+        content: turn.text.trim()
+      });
+    }
+  }
+  messages.push({
+    role: 'user',
+    content: cleanMsg
+  });
+
+  const startTime = Date.now();
+  console.log(`[AI FALLBACK] [Req: ${reqId}] Invoking OpenAI Fallback | Model: ${model} | Lang: ${detectedLang}`);
+
+  const timeoutMs = 25000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('PROVIDER_TIMEOUT')), timeoutMs);
+
+  try {
+    let replyText = '';
+    try {
+      // 1. Primary approach: OpenAI Responses API
+      const response = await client.responses.create({
+        model,
+        instructions: systemInstructionText,
+        input: messages
+      }, {
+        signal: controller.signal
+      });
+
+      replyText = response.output_text;
+      if (!replyText && response.output && Array.isArray(response.output)) {
+        for (const item of response.output) {
+          if (item.type === 'message' && Array.isArray(item.content)) {
+            for (const c of item.content) {
+              if (c.type === 'text' && c.text) {
+                replyText = c.text;
+                break;
+              }
+            }
+          }
+          if (replyText) break;
+        }
+      }
+    } catch (respErr) {
+      console.warn(`[AI FALLBACK] [Req: ${reqId}] Responses API notice (${respErr.message}). Falling back to Chat Completions format...`);
+      // 2. Chat Completions format fallback
+      const completionMessages = [
+        { role: 'system', content: systemInstructionText },
+        ...messages
+      ];
+      const chatRes = await client.chat.completions.create({
+        model,
+        messages: completionMessages,
+        temperature: 0.35,
+        max_tokens: 1024
+      }, {
+        signal: controller.signal
+      });
+      replyText = chatRes.choices?.[0]?.message?.content || '';
+    }
+
+    const duration = Date.now() - startTime;
+    if (replyText && typeof replyText === 'string' && replyText.trim()) {
+      console.log(`[AI FALLBACK] [Req: ${reqId}] SUCCESS with OpenAI (${model}) in ${duration}ms`);
+      return {
+        reply: replyText.trim(),
+        source: `OpenAI (${model})`,
+        model,
+        provider: 'openai',
+        language: detectedLang,
+        correlationId: reqId,
+        durationMs: duration
+      };
+    } else {
+      throw new Error(`OpenAI (${model}) returned empty output.`);
+    }
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    const isTimeout = err.name === 'AbortError' || err.message === 'PROVIDER_TIMEOUT';
+    const errorMsg = isTimeout ? `OpenAI provider timeout after ${timeoutMs / 1000}s` : err.message;
+    const finalErr = new Error(errorMsg);
+    finalErr.status = err.status || (isTimeout ? 504 : 500);
+    finalErr.category = isTimeout ? 'CATEGORY_TEMPORARY_PROVIDER_OUTAGE' : 'CATEGORY_OPENAI_ERROR';
+    finalErr.correlationId = reqId;
+    finalErr.model = model;
+    finalErr.provider = 'openai';
+    finalErr.durationMs = duration;
+    throw finalErr;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 app.options(['/api/chat', '/.netlify/functions/gemini-chat'], (req, res) => {
@@ -1445,93 +1591,83 @@ app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
     const cleanMsg = message.trim();
     const detectedLang = language || detectScriptLanguage(cleanMsg);
 
+    // 1. Primary AI Invocation: Google Gemini
+    let liveResult = null;
+    let geminiError = null;
+    const geminiStartTime = Date.now();
+
     try {
-      const liveResult = await invokeLiveGemini(cleanMsg, detectedLang, context, history, correlationId);
+      liveResult = await invokeLiveGemini(cleanMsg, detectedLang, context, history, correlationId);
+    } catch (gErr) {
+      geminiError = gErr;
+    }
+
+    // If Gemini succeeded, return immediately (OpenAI is NOT called)
+    if (liveResult && liveResult.reply) {
+      const geminiDurationMs = Date.now() - geminiStartTime;
+      console.log(`[AI ROUTER] [Req: ${correlationId}] Primary Provider: gemini | Fallback Provider: openai | Model: ${liveResult.model} | Success: true | Duration: ${geminiDurationMs}ms | Correlation ID: ${correlationId}`);
       return res.json({
         success: true,
         reply: liveResult.reply,
-        source: liveResult.source,
+        source: liveResult.source || `Google Gemini (${liveResult.model})`,
         model: liveResult.model,
+        provider: 'gemini',
         language: liveResult.language || detectedLang,
-        correlationId: liveResult.correlationId
+        correlationId: liveResult.correlationId,
+        durationMs: geminiDurationMs
       });
-    } catch (geminiErr) {
-      console.error(`[GEMINI API ERROR] [Req: ${correlationId}]:`, geminiErr.message);
+    }
 
-      const status = geminiErr.status || 500;
-      const category = geminiErr.category || classifyGeminiError(status);
+    // 2. Gemini Failed: Log details and attempt Fallback to OpenAI API
+    const geminiDurationMs = Date.now() - geminiStartTime;
+    const geminiStatus = geminiError?.status || 500;
+    const geminiCategory = geminiError?.category || classifyGeminiError(geminiStatus);
+    const geminiModel = geminiError?.model || 'gemini-3.8-flash';
 
-      // Handle Authentication / API Key failure (401 / 403)
-      if (category === 'CATEGORY_AUTHENTICATION_ERROR' || status === 401 || status === 403) {
-        return res.status(status).json({
-          success: false,
-          error: true,
-          status,
-          category,
-          message: 'Google Gemini API authentication failed. Please verify your GEMINI_API_KEY environment variable in Vercel.',
-          reply: '⚠️ **Kisan AI Authentication Notice**: Google Gemini API key is missing or invalid. Please configure a valid `GEMINI_API_KEY` in your environment variables.',
-          source: 'Google Gemini (Authentication Error)',
-          language: detectedLang,
-          correlationId
-        });
-      }
+    console.warn(`[AI ROUTER] [Req: ${correlationId}] Primary Provider: gemini | Fallback Provider: openai | Model: ${geminiModel} | Failure Status: ${geminiStatus} | Duration: ${geminiDurationMs}ms | Correlation ID: ${correlationId}`);
 
-      // Handle Temporary High Demand / Outage (503 / 429 / 500 / 502 / 504 / Provider Timeout)
-      if (isRetryableGeminiStatus(status) || category === 'CATEGORY_TEMPORARY_PROVIDER_OUTAGE' || category === 'CATEGORY_RATE_LIMIT_EXCEEDED') {
-        return res.status(503).json({
-          success: false,
-          error: true,
-          status: 503,
-          category,
-          message: 'Google Gemini services are temporarily experiencing high demand across all models (HTTP 503). Please retry in a few moments.',
-          reply: '⚠️ **Google Gemini Service Notice**: Google Gemini servers are currently experiencing peak demand across active models (HTTP 503). Please try asking again in a moment.',
-          source: 'Google Gemini (Temporary High Demand)',
-          language: detectedLang,
-          correlationId
-        });
-      }
+    if (geminiStatus === 404 || geminiCategory === 'CATEGORY_MODEL_NOT_FOUND') {
+      console.error(`[AI ROUTER] [Req: ${correlationId}] CONFIGURATION ERROR: Invalid Gemini Model (${geminiModel}) returned HTTP 404. Falling back to OpenAI.`);
+    }
 
-      // Handle Invalid Request (400)
-      if (status === 400 || category === 'CATEGORY_INVALID_REQUEST') {
-        return res.status(400).json({
-          success: false,
-          error: true,
-          status: 400,
-          category,
-          message: geminiErr.message || 'Invalid request format sent to Gemini API.',
-          reply: '⚠️ **Invalid Query**: Your request could not be processed by the AI engine. Please rephrase your question.',
-          source: 'Google Gemini (Invalid Request)',
-          language: detectedLang,
-          correlationId
-        });
-      }
+    // 3. Fallback Attempt: OpenAI API (gpt-6-sol)
+    const openAIStartTime = Date.now();
+    try {
+      const openAIResult = await invokeOpenAIFallback(cleanMsg, detectedLang, context, history, correlationId);
+      const openAIDurationMs = Date.now() - openAIStartTime;
 
-      // Handle Model Not Found (404)
-      if (status === 404 || category === 'CATEGORY_MODEL_NOT_FOUND') {
-        return res.status(404).json({
-          success: false,
-          error: true,
-          status: 404,
-          category,
-          message: geminiErr.message || 'Configured Gemini model not found.',
-          reply: '⚠️ **Model Configuration Notice**: The requested AI model is unavailable. Please verify GEMINI_PRIMARY_MODEL and GEMINI_FALLBACK_MODEL.',
-          source: 'Google Gemini (Model Not Found)',
-          language: detectedLang,
-          correlationId
-        });
-      }
+      console.log(`[AI ROUTER] [Req: ${correlationId}] Primary: gemini (FAILED: ${geminiStatus}) | Fallback Provider: openai (SUCCESS) | Model: ${openAIResult.model} | Fallback Duration: ${openAIDurationMs}ms | Total Duration: ${Date.now() - geminiStartTime}ms | Correlation ID: ${correlationId}`);
 
-      // Generic 502 Provider Error
-      return res.status(502).json({
+      return res.json({
+        success: true,
+        reply: openAIResult.reply,
+        source: openAIResult.source || `OpenAI (${openAIResult.model})`,
+        model: openAIResult.model,
+        provider: 'openai',
+        fallbackTriggered: true,
+        primaryProvider: 'gemini',
+        primaryModel: geminiModel,
+        primaryErrorStatus: geminiStatus,
+        language: openAIResult.language || detectedLang,
+        correlationId: openAIResult.correlationId,
+        durationMs: openAIDurationMs
+      });
+    } catch (openAIErr) {
+      const openAIDurationMs = Date.now() - openAIStartTime;
+      console.error(`[AI ROUTER] [Req: ${correlationId}] BOTH PROVIDERS FAILED | Primary Provider: gemini (${geminiStatus}: ${geminiError?.message}) | Fallback Provider: openai (${openAIErr?.status || 'ERROR'}: ${openAIErr?.message}) | Total Duration: ${Date.now() - geminiStartTime}ms | Correlation ID: ${correlationId}`);
+
+      // Both providers failed: return friendly temporary service unavailable message
+      return res.status(503).json({
         success: false,
         error: true,
-        status: 502,
-        category,
-        message: geminiErr.message || 'Upstream Gemini provider error.',
-        reply: `⚠️ **Google Gemini Notice**:\n${geminiErr.message}\n\nPlease try again in a few moments.`,
-        source: 'Google Gemini (Provider Error)',
+        status: 503,
+        category: 'CATEGORY_ALL_PROVIDERS_UNAVAILABLE',
+        message: 'Both Google Gemini and OpenAI are temporarily unavailable.',
+        reply: '⚠️ **Agricultural Advisory Notice**: Both our primary (Gemini) and backup (OpenAI) advisory engines are temporarily unavailable or experiencing high demand. Please tap "Retry Question" below in a moment.',
+        source: 'Kisan AI Multi-Provider Engine (Temporary Service Unavailable)',
         language: detectedLang,
-        correlationId
+        correlationId,
+        providersAttempted: ['gemini', 'openai']
       });
     }
   } catch (error) {
