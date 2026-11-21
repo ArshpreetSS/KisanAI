@@ -387,10 +387,21 @@ window.ChatbotModule = (function () {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      if (!res.ok) {
+        const errorReply = data?.reply || data?.message || `HTTP ${res.status} Error from Gemini 3.8 service.`;
+        const errorSource = data?.source || 'Google Gemini 3.8 Flash (Error)';
+        state.chatHistory[pendingIdx] = {
+          role: 'ai',
+          isLoading: false,
+          text: errorReply,
+          langTag: `Kisan AI • ${errorSource}`
+        };
+        renderChat();
+        return;
+      }
 
       const reply = data.reply || 'Advisory formulated.';
-      const sourceBadge = data.source ? `Kisan AI • ${data.source}` : `Kisan AI • ${langLabel}`;
+      const sourceBadge = data.source ? `Kisan AI • ${data.source}` : `Kisan AI • Google Gemini 3.8 Flash`;
 
       state.chatHistory[pendingIdx] = {
         role: 'ai',
@@ -402,15 +413,14 @@ window.ChatbotModule = (function () {
       speakReply(reply, detectedLang);
     } catch (err) {
       console.warn('Chat request error:', err);
-      const fallbackText = `Unable to connect to the live AI advisor right now. Please check your internet connection or call our toll-free farmer helpline 1800-180-1551.`;
+      const fallbackText = `⚠️ Google Gemini 3.8 Connection Error:\n${err.message || 'Could not connect to Gemini service.'}\n\nPlease verify your GEMINI_API_KEY environment variable.`;
       state.chatHistory[pendingIdx] = {
         role: 'ai',
         isLoading: false,
         text: fallbackText,
-        langTag: `Kisan AI • Connection Error`
+        langTag: `Kisan AI • Google Gemini 3.8 Error`
       };
       renderChat();
-      speakReply(fallbackText, detectedLang);
     } finally {
       state.isProcessingMessage = false;
     }

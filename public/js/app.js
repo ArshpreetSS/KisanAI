@@ -189,39 +189,28 @@ window.KisanApp = (function () {
       const statusBadge = document.getElementById('ai-status-badge');
       const indicatorDot = document.getElementById('ai-status-indicator-dot');
 
-      if (data.activeProvider === 'openai') {
-        if (headerTag) headerTag.textContent = 'ChatGPT (gpt-4o-mini)';
+      if (data.activeProvider === 'gemini') {
+        if (headerTag) headerTag.textContent = 'Gemini 3.8 Flash';
         if (headerDot) headerDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        if (chatEngineName) chatEngineName.textContent = 'OpenAI ChatGPT 4o';
-        if (statusProviderText) statusProviderText.textContent = 'Active Engine: OpenAI ChatGPT';
-        if (statusDetailText) statusDetailText.textContent = 'Connected via OpenAI API Key';
-        if (statusBadge) {
-          statusBadge.textContent = 'Active (ChatGPT)';
-          statusBadge.className = 'px-2.5 py-1 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300';
-        }
-        if (indicatorDot) indicatorDot.className = 'w-3 h-3 rounded-full bg-emerald-500';
-      } else if (data.activeProvider === 'gemini') {
-        if (headerTag) headerTag.textContent = 'Gemini 2.5 Flash';
-        if (headerDot) headerDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        if (chatEngineName) chatEngineName.textContent = 'Google Gemini 2.5';
-        if (statusProviderText) statusProviderText.textContent = 'Active Engine: Google Gemini 2.5';
+        if (chatEngineName) chatEngineName.textContent = 'Google Gemini 3.8 Flash';
+        if (statusProviderText) statusProviderText.textContent = 'Active Engine: Google Gemini 3.8 Flash';
         if (statusDetailText) statusDetailText.textContent = 'Connected via Gemini API Key';
         if (statusBadge) {
-          statusBadge.textContent = 'Active (Gemini)';
+          statusBadge.textContent = 'Active (Gemini 3.8)';
           statusBadge.className = 'px-2.5 py-1 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300';
         }
         if (indicatorDot) indicatorDot.className = 'w-3 h-3 rounded-full bg-emerald-500';
       } else {
-        if (headerTag) headerTag.textContent = 'PAU Offline Engine';
-        if (headerDot) headerDot.className = 'w-2 h-2 rounded-full bg-blue-500';
-        if (chatEngineName) chatEngineName.textContent = 'PAU Offline Advisory';
-        if (statusProviderText) statusProviderText.textContent = 'Active Engine: PAU / ICAR Offline Engine';
-        if (statusDetailText) statusDetailText.textContent = 'Zero API latency • Full agronomy rules';
+        if (headerTag) headerTag.textContent = 'Gemini 3.8 (Config Needed)';
+        if (headerDot) headerDot.className = 'w-2 h-2 rounded-full bg-amber-500';
+        if (chatEngineName) chatEngineName.textContent = 'Google Gemini 3.8';
+        if (statusProviderText) statusProviderText.textContent = 'Google Gemini 3.8 Flash';
+        if (statusDetailText) statusDetailText.textContent = 'Set GEMINI_API_KEY in environment variables';
         if (statusBadge) {
-          statusBadge.textContent = 'Offline Active';
-          statusBadge.className = 'px-2.5 py-1 rounded-full font-bold text-[10px] bg-blue-100 text-blue-800 border border-blue-300';
+          statusBadge.textContent = 'Key Required';
+          statusBadge.className = 'px-2.5 py-1 rounded-full font-bold text-[10px] bg-amber-100 text-amber-900 border border-amber-300';
         }
-        if (indicatorDot) indicatorDot.className = 'w-3 h-3 rounded-full bg-blue-500';
+        if (indicatorDot) indicatorDot.className = 'w-3 h-3 rounded-full bg-amber-500';
       }
     } catch (e) {
       console.warn('AI status check:', e);

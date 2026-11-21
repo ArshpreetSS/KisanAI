@@ -69,8 +69,8 @@ exports.handler = async function (event) {
       }
     }
 
-    // 2. Try Google Gemini if configured
-    const geminiKey = process.env.GEMINI_API_KEY;
+    // 2. Try Google Gemini 3.8
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_KEY || process.env.GOOGLE_API_KEY;
     if (geminiKey && geminiKey.trim() !== '') {
       try {
         const sysPrompt = `You are Kisan AI, a precision agriculture expert for North Indian farmers (Punjab/Haryana).
@@ -78,16 +78,19 @@ Respond in: ${detectedLang === 'gurmukhi' ? 'Punjabi (Gurmukhi)' : detectedLang 
 Incorporate context: Temp: ${tempStr}, Humidity: ${farmContext?.humidity || '58%'}, Crop: ${farmContext?.farmerCrop || 'Wheat'}.
 Keep responses structured, practical, and grounded in ICAR/PAU advice.`;
 
-        const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+        const modelsToTry = ['gemini-3.8-flash', 'gemini-3.8', 'gemini-3.8-live', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
         for (const model of modelsToTry) {
           const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey.trim())}`,
             {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': geminiKey.trim()
+              },
               body: JSON.stringify({
                 contents: [{ role: 'user', parts: [{ text: `${sysPrompt}\n\nFarmer query: ${cleanMsg}` }] }],
-                generationConfig: { temperature: 0.3, maxOutputTokens: 800 }
+                generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
               })
             }
           );
@@ -99,13 +102,13 @@ Keep responses structured, practical, and grounded in ICAR/PAU advice.`;
               return {
                 statusCode: 200,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ success: true, reply: reply.trim(), source: `Google Gemini (${model})`, language: detectedLang })
+                body: JSON.stringify({ success: true, reply: reply.trim(), source: `Google Gemini 3.8 Flash (${model})`, language: detectedLang })
               };
             }
           }
         }
       } catch (e) {
-        console.warn('Gemini error:', e.message);
+        console.warn('Gemini 3.8 error:', e.message);
       }
     }
 

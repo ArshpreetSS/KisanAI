@@ -94,7 +94,11 @@ function getGeminiApiKey() {
   const key = process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_GEMINI_API_KEY ||
     process.env.GEMINI_KEY ||
-    process.env.GOOGLE_API_KEY;
+    process.env.GOOGLE_API_KEY ||
+    process.env.GEMINI_3_8_API_KEY ||
+    process.env.GEMINI38_API_KEY ||
+    process.env.GOOGLE_AI_KEY ||
+    process.env.GEMINI_APIKEY;
   return key && typeof key === 'string' && key.trim() !== '' ? key.trim().replace(/^['"]|['"]$/g, '') : null;
 }
 
@@ -106,10 +110,9 @@ function getOpenAIApiKey() {
 // Health check endpoint
 app.get(['/health', '/api/health'], (req, res) => {
   const geminiKey = getGeminiApiKey();
-  const openaiKey = getOpenAIApiKey();
   const activeAi = geminiKey
-    ? 'Google Gemini'
-    : (openaiKey ? 'OpenAI ChatGPT' : 'Verified Offline Agro Engine');
+    ? 'Google Gemini 3.8 Flash'
+    : 'Google Gemini 3.8 (Key Missing)';
 
   const { isConfigured: supabaseConfigured } = getSupabaseServerClient();
 
@@ -120,7 +123,7 @@ app.get(['/health', '/api/health'], (req, res) => {
     environment: process.env.NODE_ENV || 'production',
     activeAiProvider: activeAi,
     geminiConfigured: Boolean(geminiKey),
-    openaiConfigured: Boolean(openaiKey),
+    model: 'gemini-3.8-flash',
     smsGatewayConfigured: Boolean(process.env.FAST2SMS_API_KEY || process.env.TWILIO_ACCOUNT_SID),
     supabaseConfigured
   });
@@ -577,14 +580,12 @@ app.post('/api/alerts/dispatch-sms', async (req, res) => {
 
 app.get('/api/config/ai', (req, res) => {
   const geminiKey = getGeminiApiKey();
-  const openaiKey = getOpenAIApiKey();
   const hasGemini = Boolean(geminiKey);
-  const hasOpenAI = Boolean(openaiKey);
 
   res.json({
-    activeProvider: hasGemini ? 'gemini' : (hasOpenAI ? 'openai' : 'offline'),
+    activeProvider: hasGemini ? 'gemini' : 'offline',
     hasGemini,
-    hasOpenAI
+    model: 'gemini-3.8-flash'
   });
 });
 
@@ -1163,149 +1164,129 @@ Are your tomato plants currently flowering or already fruiting?`;
 Aapki crop mein abhi kya specific issue aa raha hai?`;
 }
 
-// Unified LLM Invoker: Handles Google Gemini (Primary: Gemini 2.5 Flash) and OpenAI ChatGPT fallback
-async function invokeLiveLLM(cleanMsg, detectedLang, context = {}, history = []) {
+// Dedicated Google Gemini 3.8 LLM Invoker (Strictly Gemini only - forces error if unavailable)
+async function invokeLiveGemini38(cleanMsg, detectedLang, context = {}, history = []) {
   const geminiKey = getGeminiApiKey();
-  const systemInstructionText = buildAgriculturalSystemPrompt(detectedLang, context);
-
-  // 1. Google Gemini (Primary Intelligence Engine)
-  if (geminiKey) {
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-    
-    // Prepare multi-turn contents from conversation history
-    const contents = [];
-    if (Array.isArray(history) && history.length > 0) {
-      const validTurns = history.slice(-6).filter(t => t && t.text && typeof t.text === 'string' && t.text.trim());
-      for (const turn of validTurns) {
-        contents.push({
-          role: turn.role === 'model' || turn.role === 'ai' || turn.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: turn.text.trim() }]
-        });
-      }
-    }
-    // Append current user message
-    contents.push({
-      role: 'user',
-      parts: [{ text: cleanMsg }]
-    });
-
-    for (const model of modelsToTry) {
-      try {
-        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey)}`;
-        const response = await fetch(geminiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{ text: systemInstructionText }]
-            },
-            contents,
-            generationConfig: {
-              temperature: 0.35,
-              topP: 0.95,
-              maxOutputTokens: 1024
-            }
-          })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const geminiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (geminiText && typeof geminiText === 'string' && geminiText.trim()) {
-            return {
-              reply: geminiText.trim(),
-              source: `Google Gemini (${model})`,
-              model,
-              language: detectedLang
-            };
-          }
-        } else {
-          const errText = await response.text();
-          console.warn(`[GEMINI API ${model}] HTTP ${response.status}:`, errText.slice(0, 180));
-          
-          // Fallback if top-level systemInstruction format returns 400
-          if (response.status === 400) {
-            const retryRes = await fetch(geminiEndpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [
-                  { role: 'user', parts: [{ text: `${systemInstructionText}\n\nFarmer Query: ${cleanMsg}` }] }
-                ],
-                generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
-              })
-            });
-            if (retryRes.ok) {
-              const retryData = await retryRes.json();
-              const text = retryData?.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (text) {
-                return {
-                  reply: text.trim(),
-                  source: `Google Gemini (${model})`,
-                  model,
-                  language: detectedLang
-                };
-              }
-            }
-          }
-        }
-      } catch (geminiErr) {
-        console.warn(`[GEMINI API ${model}] Connection error:`, geminiErr.message);
-      }
-    }
-  } else {
-    console.warn('[GEMINI AI] No API key detected in GEMINI_API_KEY / GOOGLE_API_KEY environment variables.');
+  if (!geminiKey) {
+    throw new Error('GEMINI_API_KEY environment variable is missing. Please configure your Gemini 3.8 API key in your Vercel or .env environment variables.');
   }
 
-  // 2. Secondary LLM: Try OpenAI if configured
-  const openaiKey = getOpenAIApiKey();
-  if (openaiKey) {
-    try {
-      const messages = [{ role: 'system', content: systemInstructionText }];
-      if (Array.isArray(history) && history.length > 0) {
-        history.slice(-6).forEach(h => {
-          if (h && h.text) {
-            messages.push({
-              role: h.role === 'model' || h.role === 'ai' ? 'assistant' : 'user',
-              content: h.text
-            });
-          }
-        });
-      }
-      messages.push({ role: 'user', content: cleanMsg });
+  const systemInstructionText = buildAgriculturalSystemPrompt(detectedLang, context);
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  // Gemini models in priority order (Gemini 3.8 primary, followed by available aliases)
+  const modelsToTry = [
+    'gemini-3.8-flash',
+    'gemini-3.8',
+    'gemini-3.8-live',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash'
+  ];
+
+  // Prepare multi-turn contents from conversation history
+  const contents = [];
+  if (Array.isArray(history) && history.length > 0) {
+    const validTurns = history.slice(-6).filter(t => t && t.text && typeof t.text === 'string' && t.text.trim());
+    for (const turn of validTurns) {
+      contents.push({
+        role: turn.role === 'model' || turn.role === 'ai' || turn.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: turn.text.trim() }]
+      });
+    }
+  }
+  // Append current user message
+  contents.push({
+    role: 'user',
+    parts: [{ text: cleanMsg }]
+  });
+
+  let lastError = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+
+      const response = await fetch(geminiEndpoint, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openaiKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-goog-api-key': geminiKey
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages,
-          temperature: 0.4,
-          max_tokens: 1024
+          systemInstruction: {
+            parts: [{ text: systemInstructionText }]
+          },
+          contents,
+          generationConfig: {
+            temperature: 0.35,
+            topP: 0.95,
+            maxOutputTokens: 1024
+          }
         })
       });
 
       if (response.ok) {
         const data = await response.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) {
+        const geminiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (geminiText && typeof geminiText === 'string' && geminiText.trim()) {
           return {
-            reply: text.trim(),
-            source: 'OpenAI ChatGPT (gpt-4o-mini)',
-            model: 'gpt-4o-mini',
+            reply: geminiText.trim(),
+            source: `Google Gemini 3.8 Flash (${model})`,
+            model,
             language: detectedLang
           };
         }
       }
-    } catch (openaiErr) {
-      console.warn('[OPENAI API] Error calling ChatGPT:', openaiErr.message);
+
+      const errText = await response.text();
+      let parsedErr = errText;
+      try {
+        const j = JSON.parse(errText);
+        if (j.error && j.error.message) parsedErr = j.error.message;
+      } catch (e) {}
+
+      lastError = `[${model}] HTTP ${response.status}: ${parsedErr}`;
+      console.warn(`[GEMINI 3.8 API ${model}] HTTP ${response.status}:`, parsedErr);
+
+      // If 400 error, retry with instructions inside user contents
+      if (response.status === 400) {
+        const retryRes = await fetch(geminiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiKey
+          },
+          body: JSON.stringify({
+            contents: [
+              { role: 'user', parts: [{ text: `${systemInstructionText}\n\nFarmer Query: ${cleanMsg}` }] }
+            ],
+            generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
+          })
+        });
+
+        if (retryRes.ok) {
+          const retryData = await retryRes.json();
+          const text = retryData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            return {
+              reply: text.trim(),
+              source: `Google Gemini 3.8 Flash (${model})`,
+              model,
+              language: detectedLang
+            };
+          }
+        } else {
+          const retryErrText = await retryRes.text();
+          console.warn(`[GEMINI 3.8 RETRY ${model}] Failed:`, retryErrText.slice(0, 150));
+        }
+      }
+    } catch (geminiErr) {
+      lastError = `Connection error with ${model}: ${geminiErr.message}`;
+      console.warn(`[GEMINI 3.8 API ${model}] Connection error:`, geminiErr.message);
     }
   }
 
-  return null;
+  throw new Error(lastError || 'Google Gemini 3.8 API failed to return a response across candidate models.');
 }
 
 app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
@@ -1318,27 +1299,27 @@ app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
     const cleanMsg = message.trim();
     const detectedLang = language || detectScriptLanguage(cleanMsg);
 
-    // Call live Gemini LLM
-    const liveResult = await invokeLiveLLM(cleanMsg, detectedLang, context, history);
-    if (liveResult && liveResult.reply) {
+    // Strictly enforce Google Gemini 3.8 - returns exact error if unavailable
+    try {
+      const liveResult = await invokeLiveGemini38(cleanMsg, detectedLang, context, history);
       return res.json({
         success: true,
         reply: liveResult.reply,
-        source: liveResult.source,
+        source: liveResult.source || 'Google Gemini 3.8 Flash',
         model: liveResult.model,
         language: liveResult.language || detectedLang
       });
+    } catch (geminiErr) {
+      console.error('[GEMINI 3.8 ERROR]:', geminiErr.message);
+      return res.status(502).json({
+        success: false,
+        error: true,
+        message: geminiErr.message,
+        reply: `⚠️ Google Gemini 3.8 Error:\n${geminiErr.message}\n\nPlease check your GEMINI_API_KEY in your Vercel or local .env environment variables.`,
+        source: 'Google Gemini 3.8 Flash (Error)',
+        language: detectedLang
+      });
     }
-
-    // High quality PAU domain fallback if live AI is unavailable
-    const fallbackReply = getExpertAgriculturalResponse(cleanMsg, detectedLang, context);
-    return res.json({
-      success: true,
-      reply: fallbackReply,
-      source: 'Verified Regional Agro-Advisory Engine (Offline Fallback)',
-      isFallback: true,
-      language: detectedLang
-    });
   } catch (error) {
     console.error('Error in /api/chat:', error);
     return res.status(500).json({ success: false, message: 'Internal server error while processing chat message.' });

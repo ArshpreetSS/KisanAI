@@ -48,7 +48,7 @@
   - *"Temperature dikhao"* → Navigates to Interface 1.
   - *"Crop scanner kholo"* → Navigates to Interface 2.
   - *"KVK helpline number"* → Navigates to Interface 3.
-- **Multilingual Conversational Intelligence**: Powered by **Google Gemini 2.5 Flash** with farm context injection (current temperature, humidity, soil moisture, registered crop, and latest scan).
+- **Multilingual Conversational Intelligence**: Powered by **Google Gemini 3.8 Flash** with farm context injection (current temperature, humidity, soil moisture, registered crop, and latest scan).
 - **Native Speech Synthesis (TTS)**: Natural voice responses in Punjabi (`pa-IN`), Hindi (`hi-IN`), or Indian English (`en-IN`) with a mute toggle.
 
 ---
