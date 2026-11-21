@@ -90,9 +90,14 @@ Serverless functions configured in `netlify/functions/` and routed via `netlify.
 ```env
 PORT=3000
 
-# Google Gemini API Key (Optional for production live AI generation)
-# If blank, Kisan AI operates in Verified Regional Agromet & Pathology Mode
+# Google Gemini API Key & Dual-Tier Model Configuration
 GEMINI_API_KEY=
+GEMINI_PRIMARY_MODEL=gemini-3.8-flash
+GEMINI_FALLBACK_MODEL=gemini-3.5-flash-lite
+
+# Supabase Authentication & Database Configuration (Email OTP)
+SUPABASE_URL=
+SUPABASE_PUBLISHABLE_KEY=
 
 # Default Farm Coordinates (Sirhind / Fatehgarh Sahib, Punjab, India)
 DEFAULT_LAT=30.6433
@@ -103,3 +108,9 @@ FAST2SMS_API_KEY=
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 ```
+
+### 🧠 Gemini Dual-Tier Resilience Engine
+- **Primary Model**: `gemini-3.8-flash` (Deep reasoning & agricultural intelligence).
+- **Fallback Model**: `gemini-3.5-flash-lite` (High-throughput, ultra-low latency fallback).
+- **Automatic 503 Spike Recovery**: When Google's infrastructure experiences high-demand spikes (`HTTP 503`) or rate limits (`HTTP 429`), the backend applies exponential backoff with random jitter, respects `Retry-After` headers, and automatically switches to `gemini-3.5-flash-lite` without dropping user queries.
+- **Strict Error Classification**: Differentiates between permanent 400/401/404 errors (fails immediately without retry loops) and transient 503/429/500 provider issues.

@@ -78,7 +78,9 @@ Respond in: ${detectedLang === 'gurmukhi' ? 'Punjabi (Gurmukhi)' : detectedLang 
 Incorporate context: Temp: ${tempStr}, Humidity: ${farmContext?.humidity || '58%'}, Crop: ${farmContext?.farmerCrop || 'Wheat'}.
 Keep responses structured, practical, and grounded in ICAR/PAU advice.`;
 
-        const modelsToTry = ['gemini-3.8-flash', 'gemini-3.8-pro'];
+        const primaryModel = process.env.GEMINI_PRIMARY_MODEL || 'gemini-3.8-flash';
+        const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite';
+        const modelsToTry = [primaryModel, fallbackModel];
         for (const model of modelsToTry) {
           const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey.trim())}`,
