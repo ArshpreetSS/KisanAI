@@ -27,7 +27,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get(['/health', '/api/health'], (req, res) => {
   const activeAi = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim() !== ''
     ? 'OpenAI ChatGPT'
     : (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '' ? 'Google Gemini' : 'Verified Offline Agro Engine');
