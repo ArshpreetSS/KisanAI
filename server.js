@@ -86,12 +86,23 @@ async function sendSmsMessage(phone, messageText, options = {}) {
     }
   }
 
-  // 2. Try Twilio (Global Gateway)
-  if (twilioSid && twilioToken && twilioPhone) {
+  // 2. Try Twilio (Global SMS Gateway)
+  const twilioServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+  if (twilioSid && twilioToken && (twilioPhone || twilioServiceSid)) {
     try {
       const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid.trim()}/Messages.json`;
       const authHeader = 'Basic ' + Buffer.from(`${twilioSid.trim()}:${twilioToken.trim()}`).toString('base64');
       const targetNumber = cleanPhone.startsWith('+') ? cleanPhone : `+91${cleanPhone}`;
+
+      const params = new URLSearchParams({
+        To: targetNumber,
+        Body: messageText
+      });
+      if (twilioPhone && twilioPhone.trim()) {
+        params.append('From', twilioPhone.trim());
+      } else if (twilioServiceSid && twilioServiceSid.trim()) {
+        params.append('MessagingServiceSid', twilioServiceSid.trim());
+      }
 
       const response = await fetch(twilioUrl, {
         method: 'POST',
@@ -99,19 +110,18 @@ async function sendSmsMessage(phone, messageText, options = {}) {
           'Authorization': authHeader,
           'Content-Type': 'application/x-www-form-urlencoded'
         },
-        body: new URLSearchParams({
-          To: targetNumber,
-          From: twilioPhone.trim(),
-          Body: messageText
-        }).toString()
+        body: params.toString()
       });
 
       const data = await response.json();
       if (response.ok) {
-        console.log(`[SMS GATEWAY - TWILIO] Dispatched to ${targetNumber}. SID: ${data.sid}`);
+        console.log(`[SMS GATEWAY - TWILIO] Dispatched successfully to ${targetNumber}. SID: ${data.sid}`);
         return { success: true, provider: 'Twilio', sid: data.sid };
       } else {
-        console.warn(`[SMS GATEWAY - TWILIO WARN]`, data.message);
+        console.warn(`[SMS GATEWAY - TWILIO WARN] Status ${response.status}: ${data.message} (Code: ${data.code || 'N/A'})`);
+        if (data.code === 21608) {
+          console.warn(`👉 [TWILIO TRIAL NOTICE] For Twilio Trial accounts, verify ${targetNumber} at https://console.twilio.com/us1/develop/phone-numbers/manage/verified to receive live SMS.`);
+        }
       }
     } catch (twErr) {
       console.error('[SMS GATEWAY - TWILIO ERROR]', twErr.message);
