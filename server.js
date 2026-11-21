@@ -987,165 +987,321 @@ app.get('/api/weather/live', async (req, res) => {
 // 4. Multilingual Kisan AI Chatbot Backend (Gemini + ChatGPT + NLP Fallback)
 // -------------------------------------------------------------
 function detectScriptLanguage(text) {
+  if (!text) return 'hinglish';
+  // Check Gurmukhi unicode block (ਪੰਜਾਬੀ)
   if (/[\u0A00-\u0A7F]/.test(text)) return 'gurmukhi';
+  // Check Devanagari unicode block (हिन्दी)
   if (/[\u0900-\u097F]/.test(text)) return 'hindi';
+
+  // Roman script detection: check for distinctive Punjabi words in Roman script
+  const lower = text.toLowerCase();
+  const punjabiRomanWords = /\b(kive|kiven|kinve|kehri|kehda|fasal|pani|paani|launa|bija|kadon|kado|kanak|jbona|narma|sarson|sarhon|mitti|tuhadi|mera|meri|vich|te|nu|chahida|chahidi|dasso|daso|thik|theek|karan|kara|laaye|laayiye|keeda|keede)\b/;
+  if (punjabiRomanWords.test(lower)) return 'gurmukhi';
+
+  // Check for English query
+  if (/^(when|what|how|why|which|can|should|tell|is|are|do|does)\b/i.test(text.trim())) {
+    return 'english';
+  }
+
   return 'hinglish';
 }
 
-function getExpertAgriculturalResponse(text, detectedLang, context = {}) {
+function buildAgriculturalSystemPrompt(detectedLang, context = {}) {
+  const farmerName = context.farmerName || 'Farmer';
+  const farmerCrop = context.farmerCrop || null;
+  const farmerLocation = context.location || null;
+
+  // Strict telemetry rule: NEVER fabricate fake sensor data. Only include if real verified data exists.
+  let telemetrySection = '';
+  if (context.hasRealTelemetry && (context.temp || context.humidity || context.moisture)) {
+    telemetrySection = `
+Verified Local Sensor Telemetry (use ONLY if directly relevant to the question):
+- Temperature: ${context.temp || 'N/A'}
+- Humidity: ${context.humidity || 'N/A'}
+- Soil Moisture: ${context.moisture || 'N/A'}`;
+  }
+
+  return `You are "Kisan AI" (ਕਿਸਾਨ ਏਆਈ / किसान एआई), an elite, highly practical agricultural intelligence advisor specialized for farmers, horticulturists, and growers across Punjab, Haryana, and North India.
+
+CRITICAL INSTRUCTIONS & RESPONSE QUALITY RULES:
+
+1. UNDERSTAND THE QUESTION & INTENT DIRECTLY:
+- Identify the exact crop, plant, soil, or farming topic (e.g., Wheat/ਕਣਕ, Rice/Paddy/ਝੋਨਾ, Mustard/ਸਰ੍ਹੋਂ, Tulsi/ਤੁਲਸੀ, Tomato/ਟਮਾਟਰ, vegetables, red soil/ਲਾਲ ਮਿੱਟੀ, irrigation timing, fertilizer split-doses, pests, diseases, or government subsidies).
+- Answer the specific problem directly in the VERY FIRST sentence. Avoid generic filler intros like "I am your AI assistant" or "As an AI model...".
+- Do NOT force every question into a disease category. Support gardening, crop management, irrigation, fertilizers, pests, soil, and farming practices naturally.
+
+2. MULTILINGUAL INTELLIGENCE & SCRIPT CONSISTENCY:
+- Detect the farmer's language and respond naturally in that exact language and script:
+  * Punjabi (Gurmukhi): If the farmer writes in Gurmukhi script or asks in Punjabi (e.g. "tulsi nu thik kive rakhiye?", "ਕਣਕ ਨੂੰ ਪਹਿਲਾ ਪਾਣੀ ਕਦੋਂ ਲਾਉਣਾ ਚਾਹੀਦਾ ਹੈ?"), reply in natural, fluent Punjabi written in Gurmukhi script (ਪੰਜਾਬੀ).
+  * Hindi (Devanagari): If the farmer asks in Hindi/Devanagari (e.g. "गेहूं में पीलापन क्यों आ रहा है?"), reply in natural Hindi written in Devanagari script (हिन्दी).
+  * Hinglish: If the farmer writes in Hindi/Urdu using Roman/English alphabet (e.g. "Wheat ki fasal mein peeli pattiyan kyun aa rahi hain?", "Meri sarson ki fasal mein keede lag gaye hain"), reply in clear, natural, conversational Hinglish in Roman script.
+  * English: If the farmer asks in English (e.g. "When should I water my tomato plants?"), reply in clear, direct English.
+- Do NOT mix different scripts or randomly alternate languages.
+
+3. STRUCTURED, ACTIONABLE AGRICULTURAL ADVICE:
+For practical agronomic guidance, use clear, clean formatting:
+1. Direct answer / diagnosis in the first sentence.
+2. What to do (practical, actionable steps).
+3. How to do it (recommended dosages and timing following Punjab Agricultural University - PAU / ICAR recommendations).
+4. What to avoid (common mistakes, over-watering, chemical misuse).
+5. When to seek further help (mention KVK or Kisan Call Centre toll-free 1800-180-1551 when relevant).
+End with a brief, relevant follow-up question (e.g., asking about symptoms, plant age, or yellowing pattern) if clarification is needed.
+
+4. ABSOLUTE TRUTH — ZERO FABRICATED DATA:
+- Never invent or fabricate temperature, humidity, soil moisture, rainfall forecasts, sensor readings, or market prices.
+- If telemetry is not provided or not relevant to the question (e.g. Tulsi care, seed selection, subsidy schemes), do NOT mention weather or moisture numbers.
+${telemetrySection}
+
+5. AGRICULTURAL SAFETY & DOSAGES:
+- Base chemical dosages strictly on standard PAU / ICAR recommendations.
+- Always note protective measures (gloves, masks, calm weather spraying).
+- Distinguish possible causes from confirmed diagnoses.
+
+Farmer Profile Context:
+- Farmer: ${farmerName}
+${farmerCrop ? `- Primary Crop: ${farmerCrop}` : ''}
+${farmerLocation ? `- Location: ${farmerLocation}` : ''}
+`;
+}
+
+function getExpertAgriculturalResponse(text, detectedLang, context = {}, history = []) {
   const lower = text.toLowerCase();
-  const tempStr = context.temp || '24.5°C';
-  const humidity = context.humidity || '58%';
-  const moisture = context.moisture || '42%';
+  
+  // If query is an ambiguous follow-up (e.g. "iska ilaaj kya hai?"), incorporate previous turn
+  let contextQuery = lower;
+  if (Array.isArray(history) && history.length > 0) {
+    const prevTurn = history.slice(-2).map(h => (h.text || '').toLowerCase()).join(' ');
+    contextQuery = `${prevTurn} ${lower}`;
+  }
+
   const crop = context.farmerCrop || (context.lastScan ? context.lastScan.item_name : 'Wheat');
 
-  const isSoilOrCropSelection = /lal mitti|red soil|lal miti|mitti|miti|soil|kali mitti|retli|fasal bija|kehri fasal|konsi fasal|bija|boen|kheti|bijo|ਲਾਲ ਮਿੱਟੀ|ਮਿੱਟੀ|ਕਿਹੜੀ ਫਸਲ|ਬੀਜਾਂ|लाल मिट्टी|कौन सी फसल|फसल बोएं/.test(lower);
-  const isRedSoil = /lal mitti|red soil|lal miti|ਲਾਲ ਮਿੱਟੀ|लाल मिट्टी/.test(lower);
-  const isTemp = /temp|temperature|mausam|weather|मौसम|तापमान|ਤਾਪਮਾਨ|ਮੌਸਮ|sardi|garmi|dhoop|frost|heat/.test(lower);
-  const isHelpline = /kvk|pau|helpline|kcc|call|number|phone|सम्पर्क|नंबर|कॉल|ਫੋਨ|ਨੰਬਰ|ਹੈਲਪਲਾਈਨ/.test(lower);
-  const isRust = /rust|peela|peeli|yellow|fungus|ਧੱਬੇ|ਪੀਲਾ|ਰੋਗ|पीला|रतुआ|फफूंद/.test(lower);
-  const isFertilizer = /urea|dap|zinc|fertilizer|khad|यूरिया|खाद|ਡੀਏਪੀ|ਯੂਰੀਆ|ਖਾਦ/.test(lower);
-  const isIrrigation = /sinchai|pani|water|irrigation|awd|ਸਿੰਚਾਈ|ਪਾਣੀ|सिंचाई|पानी/.test(lower);
-  const isScheme = /pmkisan|pm-kisan|installment|kist|subsidy|योजना|किस्त|ਸਕੀਮ|ਕਿਸ਼ਤ/.test(lower);
+  // 1. Tulsi & Home Gardening ("tulsi nu thik kive rakhiye?")
+  if (/tulsi|basil|ਤੁਲਸੀ|तुलसी/.test(contextQuery)) {
+    if (detectedLang === 'gurmukhi') {
+      return `ਤੁਲਸੀ ਦੇ ਪੌਦੇ ਨੂੰ ਸਿਹਤਮੰਦ ਰੱਖਣ ਲਈ ਉਸਨੂੰ ਲੋੜ ਅਨੁਸਾਰ ਪਾਣੀ ਦਿਓ ਅਤੇ ਚੰਗੀ ਧੁੱਪ ਮਿਲਣ ਦਿਓ।
 
-  // 1. Soil & Crop Selection
-  if (isRedSoil) {
+1. **ਧੁੱਪ:** ਪੌਦੇ ਨੂੰ ਰੋਜ਼ਾਨਾ ਲਗਭਗ 4–6 ਘੰਟੇ ਸਿੱਧੀ ਧੁੱਪ ਮਿਲਣ ਦਿਓ।
+2. **ਪਾਣੀ ਦਾ ਪ੍ਰਬੰਧ:** ਗਮਲੇ ਵਿੱਚ ਪਾਣੀ ਖੜ੍ਹਾ ਨਾ ਹੋਣ ਦਿਓ। ਜਦੋਂ ਉੱਪਰਲੀ ਮਿੱਟੀ 1 ਇੰਚ ਸੁੱਕੀ ਲੱਗੇ, ਉਦੋਂ ਹੀ ਪਾਣੀ ਦਿਓ।
+3. **ਛਾਂਗਾਈ (Pruning):** ਸੁੱਕੇ ਪੱਤੇ, ਟਾਹਣੀਆਂ ਅਤੇ ਬੀਜ ਵਾਲੀਆਂ ਮੰਜਰੀਆਂ ਨਿਯਮਿਤ ਤੌਰ 'ਤੇ ਤੋੜਦੇ ਰਹੋ ਤਾਂ ਜੋ ਪੌਦਾ ਸੰਘਣਾ ਹੋਵੇ।
+4. **ਖਾਦ:** ਮਹੀਨੇ ਵਿੱਚ ਇੱਕ ਵਾਰ ਚੰਗੀ ਗਲੀ-ਸੜੀ ਰੂੜੀ ਜਾਂ ਵਰਮੀਕੰਪੋਸਟ ਪਾਓ।
+5. **ਕੀੜਿਆਂ ਤੋਂ ਬਚਾਅ:** ਪੱਤਿਆਂ 'ਤੇ ਕੀੜੇ ਜਾਂ ਕਾਲੇ ਧੱਬੇ ਦਿਖਣ ਤਾਂ ਨਿੰਮ ਦੇ ਤੇਲ (Neem Oil 5ml ਪ੍ਰਤੀ ਲੀਟਰ) ਦਾ ਛਿੜਕਾਅ ਕਰੋ।
+
+ਤੁਹਾਡੀ ਤੁਲਸੀ ਦੇ ਪੱਤੇ ਪੀਲੇ ਹੋ ਰਹੇ ਹਨ ਜਾਂ ਪੌਦਾ ਸੁੱਕ ਰਿਹਾ ਹੈ?`;
+    }
+    if (detectedLang === 'hindi') {
+      return `तुलसी के पौधे को हरा-भरा और स्वस्थ रखने के लिए पर्याप्त धूप और सही सिंचाई सबसे जरूरी है।
+
+1. **धूप:** पौधे को रोजाना 4–6 घंटे की धूप अवश्य मिलने दें।
+2. **सिंचाई:** गमले में पानी जमा न होने दें। जब ऊपरी मिट्टी 1 इंच सूखी लगे, तभी पानी दें।
+3. **मंजरी हटाना:** पौधे पर आने वाली सूखी मंजरी (बीज) को तुरंत हटाते रहें ताकि पौधे का फैलाव बना रहे।
+4. **खाद:** महीने में एक बार 1–2 मुट्ठी वर्मीकम्पोस्ट या गोबर की सड़ी खाद डालें।
+5. **कीट नियंत्रण:** पत्तों पर कीड़े या धब्बे दिखने पर हल्के नीम तेल का छिड़काव करें।
+
+क्या आपकी तुलसी के पत्ते पीले पड़ रहे हैं या पौधा सूख रहा है?`;
+    }
+    return `Tulsi ke plant ko healthy rakhne ke liye proper sunlight aur balanced watering zaroori hai:
+
+1. **Sunlight:** Daily 4-6 hours direct dhoop mein rakhein.
+2. **Watering:** Overwatering se bachein. Jab top 1 inch soil dry feel ho, tabhi paani dein.
+3. **Pinching:** Sookhi manjari aur dry leaves ko regular hatate rahein taaki plant ghana (bushy) bane.
+4. **Nutrition:** Mahine mein ek baar vermicompost ya cow dung manure dein.
+5. **Pest Control:** Keede ya fungus hone par Neem oil spray karein.
+
+Aapki tulsi ke patte peele pad rahe hain ya plant sookh raha hai?`;
+  }
+
+  // 2. Mustard Pests / Keede ("Meri sarson ki fasal mein keede lag gaye hain")
+  if (/sarson|mustard|raya|ਸਰ੍ਹੋਂ|सरसों/.test(contextQuery) && /keede|keeda|pest|aphid|chepa|tela|ਕੀੜੇ|चेपा|तेला|ਸੁੰਡੀ/.test(contextQuery)) {
+    if (detectedLang === 'gurmukhi') {
+      return `ਸਰ੍ਹੋਂ ਦੀ ਫਸਲ ਵਿੱਚ ਇਸ ਸਮੇਂ ਚੇਪਾ (Mustard Aphid / ਤੇਲਾ) ਮੁੱਖ ਕੀੜਾ ਹੁੰਦਾ ਹੈ, ਜੋ ਫੁੱਲਾਂ ਅਤੇ ਫਲੀਆਂ ਦਾ ਰਸ ਚੂਸ ਕੇ ਨੁਕਸਾਨ ਕਰਦਾ ਹੈ।
+
+1. **ਤੁਰੰਤ ਇਲਾਜ (PAU ਸਿਫਾਰਿਸ਼):**
+   - ਥਿਆਮੇਥੋਕਸਮ (Thiamethoxam 25 WG) 40 ਗ੍ਰਾਮ ਪ੍ਰਤੀ ਏਕੜ 100 ਲੀਟਰ ਪਾਣੀ ਵਿੱਚ ਮਿਲਾ ਕੇ ਛਿੜਕਾਅ ਕਰੋ, ਜਾਂ
+   - ਰੋਗੋਰ (Dimethoate 30 EC) 250 ਮਿਲੀਲੀਟਰ ਪ੍ਰਤੀ ਏਕੜ ਵਰਤੋ।
+2. **ਛਿੜਕਾਅ ਦਾ ਸਹੀ ਸਮਾਂ:** ਛਿੜਕਾਅ ਹਮੇਸ਼ਾ ਦੁਪਹਿਰ ਤੋਂ ਬਾਅਦ ਕਰੋ ਤਾਂ ਜੋ ਮਧੂ-ਮੱਖੀਆਂ (Pollinators) ਦਾ ਨੁਕਸਾਨ ਨਾ ਹੋਵੇ।
+3. **ਕੀ ਨਾ ਕਰੋ:** ਫਸਲ ਵਿੱਚ ਜ਼ਿਆਦਾ ਯੂਰੀਆ ਨਾ ਪਾਓ ਕਿਉਂਕਿ ਨਰਮ ਪੱਤਿਆਂ 'ਤੇ ਕੀੜੇ ਤੇਜ਼ੀ ਨਾਲ ਵਧਦੇ ਹਨ।
+
+ਕੀ ਕੀੜੇ ਫੁੱਲਾਂ 'ਤੇ ਕਾਲੇ-ਹਰੇ ਰੰਗ ਦੇ ਝੁੰਡਾਂ ਵਿੱਚ ਲੱਗੇ ਹਨ?`;
+    }
+    if (detectedLang === 'hindi') {
+      return `सरसों की फसल में यह चेपा (माहू / Aphid) का प्रकोप हो सकता है, जो कोमल तनों और फलियों का रस चूसता है।
+
+1. **उपचार (PAU/ICAR सिफारिश):**
+   - थाियामेथोक्सम (Thiamethoxam 25% WG) 40 ग्राम प्रति एकड़ 100-125 लीटर पानी में घोलकर छिड़कें, या
+   - डाइमेथोएट (Dimethoate 30% EC) 250 मिली प्रति एकड़ इस्तेमाल करें।
+2. **सावधानी:** छिड़काव दोपहर के समय (2 बजे के बाद) करें ताकि परागण करने वाली मधुमक्खियों को नुकसान न पहुंचे।
+3. **सुरक्षा:** स्प्रे करते समय दस्ताने और मास्क का प्रयोग करें।
+
+विस्तृत सहायता के लिए किसान कॉल सेंटर 1800-180-1551 पर भी संपर्क कर सकते हैं।`;
+    }
+    return `Sarson ki crop mein ye Mustard Aphid (Chepa / Tela) ka attack ho sakta hai jo phoolon aur phaliyon ka ras choosta hai:
+
+1. **Chemical Treatment (PAU Standard):**
+   - Thiamethoxam 25 WG @ 40g per acre in 100 L water, YA
+   - Rogor (Dimethoate 30 EC) @ 250ml per acre spray karein.
+2. **Spraying Time:** Hamesha dopahar 2 baje ke baad spray karein taaki honeybees (madhumakhi) safe rahein.
+3. **Precautions:** Mask pehnein aur calm weather mein spray karein.
+
+Kya keede phoolon par green-black color ke jhund mein dikh rahe hain?`;
+  }
+
+  // 3. Wheat Yellowing / Peeli Pattiyan ("Wheat ki fasal mein peeli pattiyan kyun aa rahi hain?" or "गेहूं में पीलापन क्यों आ रहा है?")
+  if (/peeli|peela|peele|peelapan|yellow|ਧੱਬੇ|ਪੀਲਾ|ਰੋਗ|पीला|पीली|पीलापन|रतुआ/.test(contextQuery) && /wheat|kanak|fasal|crop|patte|patti|ਕਣਕ|ਗੇਹੂੰ|गेहूं|गेहूँ|गेंहू|gehun|gehu|पत्ती|पत्ते|ਪੱਤੇ/.test(contextQuery)) {
+    if (detectedLang === 'gurmukhi') {
+      return `ਕਣਕ ਵਿੱਚ ਪੱਤੇ ਪੀਲੇ ਹੋਣ ਦੇ 3 ਮੁੱਖ ਕਾਰਨ ਹੋ ਸਕਦੇ ਹਨ: ਪੀਲਾ ਰਤੂਆ, ਜ਼ਿੰਕ/ਨਾਈਟ੍ਰੋਜਨ ਦੀ ਕਮੀ, ਜਾਂ ਪਹਿਲੀ ਸਿੰਚਾਈ ਤੋਂ ਬਾਅਦ ਪਾਣੀ ਖੜ੍ਹਨਾ।
+
+1. **ਪੀਲਾ ਰਤੂਆ (Yellow Rust) ਦੀ ਪਛਾਣ:** ਪੱਤਿਆਂ ਉੱਤੇ ਪੀਲੇ ਰੰਗ ਦੀਆਂ ਧਾਰੀਆਂ ਬਣਦੀਆਂ ਹਨ। ਪੱਤੇ ਨੂੰ ਛੂਹਣ 'ਤੇ ਉਂਗਲਾਂ 'ਤੇ ਹਲਦੀ ਵਰਗਾ ਪੀਲਾ ਪਾਊਡਰ ਲੱਗਦਾ ਹੈ।
+   - **ਇਲਾਜ:** ਪ੍ਰੋਪੀਕੋਨਾਜ਼ੋਲ (Propiconazole 25 EC / Tilt) 200 ਮਿਲੀਲੀਟਰ ਨੂੰ 200 ਲੀਟਰ ਪਾਣੀ ਵਿੱਚ ਮਿਲਾ ਕੇ ਤੁਰੰਤ ਛਿੜਕਾਅ ਕਰੋ।
+2. **ਜ਼ਿੰਕ ਜਾਂ ਖੁਰਾਕ ਦੀ ਕਮੀ:** ਜੇਕਰ ਪਾਊਡਰ ਨਹੀਂ ਹੈ ਅਤੇ ਪੱਤੇ ਵਿਚਕਾਰੋਂ ਪੀਲੇ ਹੋ ਰਹੇ ਹਨ:
+   - **ਇਲਾਜ:** 1 ਕਿਲੋ ਜ਼ਿੰਕ ਸਲਫੇਟ (21%) + 1 ਕਿਲੋ ਯੂਰੀਆ ਨੂੰ 100 ਲੀਟਰ ਪਾਣੀ ਵਿੱਚ ਮਿਲਾ ਕੇ ਪ੍ਰਤੀ ਏਕੜ ਛਿੜਕੋ।
+3. **ਪਾਣੀ ਖੜ੍ਹਨਾ:** ਜੇਕਰ ਖੇਤ ਵਿੱਚ ਪਾਣੀ ਖੜ੍ਹਾ ਰਿਹਾ ਹੈ ਤਾਂ ਵਾਧੂ ਪਾਣੀ ਤੁਰੰਤ ਕੱਢੋ।
+
+ਕੀ ਪੱਤੇ ਛੂਹਣ 'ਤੇ ਉਂਗਲ 'ਤੇ ਪੀਲਾ ਪਾਊਡਰ ਲੱਗਦਾ ਹੈ?`;
+    }
+    if (detectedLang === 'hindi') {
+      return `गेहूं में पत्तियां पीली पड़ने के 3 प्रमुख कारण हो सकते हैं: पीला रतुआ (Yellow Rust), जिंक/यूरिया की कमी, या खेत में पानी रुकना।
+
+1. **पीला रतुआ की जांच:** पत्तियों पर पीली धारियां बनती हैं। छूने पर अंगुली पर हल्दी जैसा पाउडर लगता है।
+   - **रोकथाम:** प्रोपिकोनाज़ोल (Propiconazole 25% EC / टिल्ट) 200 मिली को 200 लीटर पानी में प्रति एकड़ स्प्रे करें।
+2. **पोषक तत्व की कमी:** यदि पाउडर नहीं है और पूरी पत्ती पीली पड़ रही है:
+   - **रोकथाम:** 1 किलो 21% जिंक सल्फेट + 1 किलो यूरिया को 100 लीटर पानी में घोलकर प्रति एकड़ छिड़काव करें।
+3. **अतिरिक्त पानी:** यदि पहली सिंचाई के बाद पानी भरा रहा है तो जल निकासी करें।
+
+क्या पत्तियों को छूने पर पीला चूर्ण अंगुलियों पर लगता है?`;
+    }
+    return `Wheat crop mein leaves yellow hone ke 3 main reasons hote hain: Yellow Rust, Zinc/Nitrogen deficiency, ya excess waterlogging:
+
+1. **Yellow Rust Check:** Leaves par yellow stripes banti hain aur ungli se chhoone par haldi jaisa powder lagta hai.
+   - **Treatment:** Propiconazole 25 EC (Tilt) 200ml in 200L water per acre spray karein.
+2. **Nutrient Deficiency:** Agar powder nahi hai aur leaves evenly yellow hain:
+   - **Treatment:** 1 kg Zinc Sulfate (21%) + 1 kg Urea ko 100L water mein dissolve karke spray karein.
+3. **Waterlogging:** First irrigation ke baad paani theharne se bhi yellowing aati hai, drainage check karein.
+
+Kya patte touch karne par ungli par peela powder lag raha hai?`;
+  }
+
+  // 4. Wheat Irrigation / First Water ("ਕਣਕ ਨੂੰ ਪਹਿਲਾ ਪਾਣੀ ਕਦੋਂ ਲਾਉਣਾ ਚਾਹੀਦਾ ਹੈ?")
+  if (/irrigation|pani|paani|water|sinchai|ਸਿੰਚਾਈ|ਪਾਣੀ|सिंचाई|पानी/.test(contextQuery) && /wheat|kanak|pehla|first|ਕਣਕ|ਗੇਹੂੰ|गेहूं|गेहूँ|गेंहू|पहला|पहल/.test(contextQuery)) {
+    if (detectedLang === 'gurmukhi') {
+      return `ਕਣਕ ਦੀ ਫਸਲ ਨੂੰ ਪਹਿਲਾ ਪਾਣੀ ਬਿਜਾਈ ਤੋਂ 20 ਤੋਂ 25 ਦਿਨਾਂ ਬਾਅਦ (CRI ਸਟੇਜ - ਤਾਜ ਜੜ੍ਹਾਂ ਨਿਕਲਣ ਵੇਲੇ) ਲਗਾਉਣਾ ਚਾਹੀਦਾ ਹੈ।
+
+1. **ਮਹੱਤਵ:** ਇਹ ਸਿੰਚਾਈ ਕਣਕ ਲਈ ਸਭ ਤੋਂ ਨਾਜ਼ੁਕ ਹੁੰਦੀ ਹੈ। ਇਸ ਵੇਲੇ ਪੌਦੇ ਦੀਆਂ ਮੁੱਖ ਜੜ੍ਹਾਂ ਬਣਦੀਆਂ ਹਨ।
+2. **ਖਾਦ ਪ੍ਰਬੰਧ:** ਪਹਿਲੀ ਸਿੰਚਾਈ ਵੇਲੇ ਪ੍ਰਤੀ ਏਕੜ ਅੱਧਾ ਥੈਲਾ ਯੂਰੀਆ (ਲਗਭਗ 45-50 ਕਿਲੋ) ਅਤੇ ਲੋੜ ਅਨੁਸਾਰ 21% ਜ਼ਿੰਕ ਸਲਫੇਟ (10 ਕਿਲੋ) ਪਾਓ।
+3. **ਸਾਵਧਾਨੀ:** ਪਾਣੀ ਹਲਕਾ ਲਗਾਓ, ਖੇਤ ਵਿੱਚ ਪਾਣੀ ਖੜ੍ਹਾ ਨਾ ਹੋਣ ਦਿਓ। ਜ਼ਿਆਦਾ ਪਾਣੀ ਭਰਨ ਨਾਲ ਫਸਲ ਪੀਲੀ ਪੈ ਸਕਦੀ ਹੈ।
+
+ਤੁਹਾਡੀ ਕਣਕ ਦੀ ਬਿਜਾਈ ਨੂੰ ਕਿੰਨੇ ਦਿਨ ਹੋ ਗਏ ਹਨ?`;
+    }
+    if (detectedLang === 'hindi') {
+      return `गेहूं में पहली सिंचाई बुवाई के 20 से 25 दिन बाद (CRI स्टेज - मुकुट जड़ बनते समय) करनी चाहिए।
+
+1. **अहमियत:** यह सिंचाई सबसे महत्वपूर्ण होती है क्योंकि इसी समय कल्ले (tillers) और मुख्य जड़ें बनती हैं।
+2. **उर्वरक:** पहली सिंचाई के समय 1 बैग यूरिया और आवश्यकतानुसार 10 किलो जिंक सल्फेट डालें।
+3. **सावधानी:** खेत में पानी भरने न दें, हल्की सिंचाई करें ताकि पौधे पीले न पड़ें।
+
+आपकी गेहूं की बुवाई को कितने दिन हो चुके हैं?`;
+    }
+    return `Wheat mein pehli irrigation sowing ke 20-25 days baad (CRI Stage - Crown Root Initiation) par karni chahiye:
+
+1. **Significance:** Ye stage crop ke tillering aur root development ke liye sabse critical hoti hai.
+2. **Fertilizer Split:** Pehle paani ke sath half bag Urea aur 10kg Zinc Sulfate (21%) per acre apply karein.
+3. **Precaution:** Paani light rakhein, theharne na dein taaki leaves yellow na hon.
+
+Aapki wheat sowing ko kitne din ho chuke hain?`;
+  }
+
+  // 5. Tomato Watering ("When should I water my tomato plants?")
+  if (/tomato|tamatar|ਟਮਾਟਰ|टमाटर/.test(contextQuery) && /water|watering|sinchai|pani|ਸਿੰਚਾਈ|ਪਾਣੀ|सिंचाई/.test(contextQuery)) {
+    return `Water tomato plants deeply 1–2 times a week rather than giving shallow water every day.
+
+1. **When to water:** Check the soil with your finger. Water only when the top 1–2 inches of soil feel dry.
+2. **How to water:** Water at the soil base around the roots, keeping foliage dry to prevent fungal blight and leaf spots.
+3. **Mulching:** Add dry straw or compost around the base to retain moisture and prevent blossom end rot.
+4. **Avoid:** Inconsistent watering (letting soil go bone dry then flooding it), which causes fruit cracking.
+
+Are your tomato plants currently flowering or already fruiting?`;
+  }
+
+  // 6. Ambiguous "Ilaaj" follow-up fallback
+  if (/ilaaj|ilaj|treatment|upchar|dawa|dawai|kya karein|ki kariye|ਕੀ ਕਰੀਏ|ਇਲਾਜ|उपचार|इलाज/.test(lower)) {
+    if (detectedLang === 'gurmukhi') {
+      return `ਕਣਕ ਵਿੱਚ ਪੀਲੇ ਰਤੂਏ ਦੇ ਇਲਾਜ ਲਈ ਪ੍ਰੋਪੀਕੋਨਾਜ਼ੋਲ (Propiconazole 25 EC / Tilt) 200ml ਨੂੰ 200 ਲੀਟਰ ਪਾਣੀ ਵਿੱਚ ਮਿਲਾ ਕੇ ਛਿੜਕਾਅ ਕਰੋ। ਜੇਕਰ ਕੀੜੇ ਹਨ ਤਾਂ ਥਿਆਮੇਥੋਕਸਮ 40g ਪ੍ਰਤੀ ਏਕੜ ਵਰਤੋ। ਸਹੀ ਦਵਾਈ ਲਈ ਲੱਛਣ ਦੱਸੋ।`;
+    }
+    if (detectedLang === 'hindi') {
+      return `गेहूं में पीलापन/रतुआ के उपचार हेतु प्रोपिकोनाज़ोल 25% EC (200 मिली प्रति 200 लीटर पानी) का छिड़काव करें। यदि कीड़ों की समस्या है तो थाियामेथोक्सम 40 ग्राम प्रति एकड़ प्रयोग करें।`;
+    }
+    return `Wheat mein yellow rust ke treatment ke liye Propiconazole 25 EC (Tilt) 200ml per acre spray karein. Agar pests/aphids hain toh Thiamethoxam 25 WG @ 40g per acre use karein.`;
+  }
+
+  // 6. Red Soil ("lal mitti")
+  if (/lal mitti|red soil|lal miti|ਲਾਲ ਮਿੱਟੀ|लाल मिट्टी/.test(lower)) {
     if (detectedLang === 'gurmukhi') {
       return `ਲਾਲ ਮਿੱਟੀ (Red Soil) ਵਿੱਚ ਆਇਰਨ ਆਕਸਾਈਡ ਹੁੰਦਾ ਹੈ ਅਤੇ ਇਹ ਹਲਕੀ ਤੇ ਚੰਗੀ ਨਿਕਾਸੀ ਵਾਲੀ ਹੁੰਦੀ ਹੈ। ਇਸ ਮਿੱਟੀ ਵਿੱਚ ਹੇਠ ਲਿਖੀਆਂ ਫਸਲਾਂ ਸਭ ਤੋਂ ਵਧੀਆ ਹੁੰਦੀਆਂ ਹਨ:
+
 1. **ਮੂੰਗਫਲੀ (Groundnut):** ਲਾਲ ਮਿੱਟੀ ਮੂੰਗਫਲੀ ਦੀਆਂ ਗੰਢਾਂ ਬਣਨ ਲਈ ਸਭ ਤੋਂ ਉੱਤਮ ਹੈ।
-2. **ਦਾਲਾਂ (Pulses):** ਅਰਹਰ (ਤੂਰ), ਮੂੰਗੀ, ਅਤੇ ਮਾਂਹ (ਉੜਦ)।
+2. **ਦਾਲਾਂ (Pulses):** ਅਰਹਰ (ਤੂਰ), ਮੂੰਗੀ, ਅਤੇ ਮਾਂਹ।
 3. **ਮੋਟਾ ਅਨਾਜ (Millets):** ਬਾਜਰਾ, ਮੱਕੀ, ਅਤੇ ਜਵਾਰ।
 4. **ਕਪਾਹ / ਨਰਮਾ (Cotton):** ਜੇਕਰ ਸਿੰਚਾਈ ਦਾ ਪ੍ਰਬੰਧ ਹੋਵੇ।
-5. **ਤੇਲ ਬੀਜ:** ਤਿਲ ਅਤੇ ਸੂਰਜਮੁਖੀ।
-💡 **ਮਿੱਟੀ ਸੁਧਾਰ ਸੁਝਾਅ:** ਲਾਲ ਮਿੱਟੀ ਵਿੱਚ ਨਾਈਟ੍ਰੋਜਨ ਤੇ ਜੈਵਿਕ ਮਾਦੇ ਦੀ ਕਮੀ ਹੁੰਦੀ ਹੈ, ਇਸ ਲਈ ਬਿਜਾਈ ਵੇਲੇ ਚੰਗੀ ਗਲੀ-ਸੜੀ ਰੂੜੀ ਖਾਦ (FYM) ਜਾਂ ਕੰਪੋਸਟ ਜ਼ਰੂਰ ਪਾਓ।`;
+5. **ਸੁਝਾਅ:** ਲਾਲ ਮਿੱਟੀ ਵਿੱਚ ਜੈਵਿਕ ਮਾਦੇ ਦੀ ਕਮੀ ਹੁੰਦੀ ਹੈ, ਇਸ ਲਈ ਬਿਜਾਈ ਵੇਲੇ ਰੂੜੀ ਖਾਦ (FYM) ਜ਼ਰੂਰ ਪਾਓ।`;
     }
     if (detectedLang === 'hindi') {
       return `लाल मिट्टी (Red Soil) भुरभुरी और अच्छी जल-निकासी वाली होती है। इस मिट्टी में मुख्य रूप से ये फसलें सबसे अधिक लाभकारी होती हैं:
+
 1. **मूंगफली (Groundnut):** लाल मिट्टी में मूंगफली का दाना बहुत पुष्ट बैठता है।
 2. **दलहन फसलें (Pulses):** अरहर, मूंग, उड़द और चना।
-3. **मोटे अनाज (Millets):** बाजरा, मक्का और ज्वार (कम पानी में भी अच्छा उत्पादन)।
-4. **कपास (Cotton):** जल-निकासी अच्छी होने के कारण जड़ गलन का खतरा कम रहता है।
-5. **तिलहन:** तिल, सोयाबीन और सूरजमुखी।
-💡 **सुझाव:** लाल मिट्टी में जैविक खाद (गोबर की सड़ी खाद या वर्मीकम्पोस्ट) अवश्य मिलाएं ताकि मिट्टी की नमी सोखने की क्षमता बढ़े।`;
+3. **मोटे अनाज (Millets):** बाजरा, मक्का और ज्वार।
+4. **सुझाव:** लाल मिट्टी में जैविक खाद (गोबर की सड़ी खाद) अवश्य मिलाएं ताकि मिट्टी की नमी सोखने की क्षमता बढ़े।`;
     }
     return `Lal mitti (Red Soil) porous aur well-drained hoti hai. Is mitti par aap ye best crops beej sakte hain:
-1. **Moongfali (Groundnut):** Red soil moongfali ki pod formation ke liye sabse best maani jaati hai.
-2. **Dalhan (Pulses):** Arhar (Tur), Moong, aur Urad ki daalein.
-3. **Millets / Mota Anaj:** Makki (Maize), Bajra, aur Jowar kam paani mein bhi acchi upaj dete hain.
-4. **Kapas / Narma (Cotton):** Agar irrigation ki suvidha ho toh cotton successful rehti hai.
-5. **Tilhan:** Til, Sunflower, aur Alsi.
-💡 **Agronomist Tip:** Lal mitti mein Desi Gobar ki Khad (FYM) ya Vermicompost zaroor daalein taaki moisture hold karne ki capacity badh sake.`;
+
+1. **Moongfali (Groundnut):** Red soil pod formation ke liye sabse best hoti hai.
+2. **Dalhan (Pulses):** Arhar, Moong, aur Urad.
+3. **Millets / Mota Anaj:** Makki, Bajra, aur Jowar kam paani mein bhi acchi upaj dete hain.
+4. **Agronomist Tip:** Desi Gobar ki Khad (FYM) zaroor daalein taaki moisture holding capacity badh sake.`;
   }
 
-  if (isSoilOrCropSelection) {
-    if (detectedLang === 'gurmukhi') {
-      return `ਫਸਲ ਦੀ ਚੋਣ ਲਈ ਮਿੱਟੀ ਦੀ ਕਿਸਮ ਤੇ ਮੌਸਮ ਬਹੁਤ ਜ਼ਰੂਰੀ ਹੈ। ਮੌਜੂਦਾ ਤਾਪਮਾਨ ${tempStr} ਹੈ। ਰਬੀ ਸੀਜ਼ਨ ਵਿੱਚ ਕਣਕ (PBW 826 / DBW 187), ਸਰ੍ਹੋਂ, ਛੋਲੇ ਜਾਂ ਆਲੂ ਸਭ ਤੋਂ ਮੁਨਾਫੇ ਵਾਲੀਆਂ ਫਸਲਾਂ ਹਨ। ਮਿੱਟੀ ਪਰਖ (Soil Health Card) ਕਰਵਾਉਣ ਲਈ KVK ਫਤਿਹਗੜ੍ਹ ਸਾਹਿਬ (81465-70699) ਨਾਲ ਸੰਪਰਕ ਕਰੋ।`;
-    }
-    if (detectedLang === 'hindi') {
-      return `फसल चयन खेत की मिट्टी और वर्तमान मौसम पर निर्भर करता है। अभी खेत का तापमान ${tempStr} है। रबी में गेहूं, सरसों, मटर और चना सबसे उपयुक्त विकल्प हैं। यदि मिट्टी हल्की/रेतीली है तो मूंगफली या बाजरा, और यदि चिकनी दोमट है तो गेहूं या धान चुनें।`;
-    }
-    return `Crop selection ke liye mitti ka type aur season sabse zaroori hota hai. Current temp ${tempStr} hai. Rabi season mein Wheat (PBW 826 / DBW 187), Sarson, Chana, ya Matar sabse best hain. Soil testing ke liye KVK Fatehgarh Sahib (81465-70699) se consult karein.`;
-  }
-
-  // 2. Weather & Temperature
-  if (isTemp) {
-    if (detectedLang === 'gurmukhi') {
-      return `ਅੱਜ ਦਾ ਖੇਤ ਤਾਪਮਾਨ ${tempStr} ਹੈ, ਹਵਾ ਵਿੱਚ ਨਮੀ ${humidity} ਅਤੇ ਮਿੱਟੀ ਵਿੱਚ ਨਮੀ ${moisture} ਹੈ। ਰਬੀ ਫਸਲ (ਜਿਵੇਂ ਕਣਕ) ਦੇ ਵਾਧੇ ਲਈ ਮੌਸਮ ਅਨੁਕੂਲ ਹੈ। ਜੇਕਰ ਤਾਪਮਾਨ 35°C ਤੋਂ ਵਧਦਾ ਹੈ ਤਾਂ ਹਲਕੀ ਸਿੰਚਾਈ ਕਰੋ।`;
-    }
-    if (detectedLang === 'hindi') {
-      return `वर्तमान में खेत का तापमान ${tempStr} है, वायु आर्द्रता ${humidity} और मिट्टी की नमी ${moisture} है। यह स्थिति रबी फसलों के लिए अनुकूल है। यदि पाला पड़ने की आशंका हो तो शाम को हल्की सिंचाई करें।`;
-    }
-    return `Field temperature abhi ${tempStr} hai, relative humidity ${humidity} aur soil moisture ${moisture} hai. Rabi crop growth ke liye bilkul normal conditions hain. Agar temp ${context.maxThresh || '35°C'} se upar gaya toh automatic alert switch ho jayega.`;
-  }
-
-  // 3. Yellow Rust & Disease
-  if (isRust) {
-    if (detectedLang === 'gurmukhi') {
-      return `ਕਣਕ ਵਿੱਚ ਪੀਲੇ ਰਤੂਏ (Yellow Rust) ਦੇ ਲੱਛਣ ਦਿਸਣ 'ਤੇ ਤੁਰੰਤ ਪ੍ਰੋਪੀਕੋਨਾਜ਼ੋਲ (Propiconazole 25 EC / Tilt) 200 ਮਿਲੀਲੀਟਰ ਨੂੰ 200 ਲੀਟਰ ਪਾਣੀ ਵਿੱਚ ਮਿਲਾ ਕੇ ਪ੍ਰਤੀ ਏਕੜ ਛਿੜਕਾਅ ਕਰੋ। ਸਲਾਹ ਲਈ KVK ਫਤਿਹਗੜ੍ਹ ਸਾਹਿਬ (81465-70699) ਨਾਲ ਸੰਪਰਕ ਕਰੋ।`;
-    }
-    if (detectedLang === 'hindi') {
-      return `गेहूं में पीला रतुआ (Yellow Rust) की रोकथाम हेतु प्रोपिकोनाज़ोल 25% EC (200 मिली प्रति 200 लीटर पानी प्रति एकड़) का छिड़काव करें। विस्तृत सलाह के लिए KVK फतेहगढ़ साहिब (81465-70699) पर संपर्क करें।`;
-    }
-    return `Wheat mein Yellow Rust (peela roga) ke liye Propiconazole 25 EC (200 ml in 200 L water per acre) ka spray karein. Confirm karne ke liye KVK Fatehgarh Sahib (81465-70699) par consult kar sakte hain.`;
-  }
-
-  // 4. Fertilizers & Urea
-  if (isFertilizer) {
-    if (detectedLang === 'gurmukhi') {
-      return `ਪਹਿਲੀ ਸਿੰਚਾਈ (ਬਿਜਾਈ ਤੋਂ 21 ਦਿਨ ਬਾਅਦ) ਸਮੇਂ ਪ੍ਰਤੀ ਏਕੜ ਅੱਧਾ ਥੈਲਾ ਯੂਰੀਆ ਅਤੇ ਲੋੜ ਅਨੁਸਾਰ 21% ਜ਼ਿੰਕ ਸਲਫੇਟ (10 ਕਿਲੋ) ਪਾਓ। ਨਾਈਟ੍ਰੋਜਨ ਨੂੰ ਹਮੇਸ਼ਾ 2-3 ਕਿਸ਼ਤਾਂ ਵਿੱਚ ਵੰਡ ਕੇ ਵਰਤੋ।`;
-    }
-    if (detectedLang === 'hindi') {
-      return `यूरिया (46% N) का संतुलित उपयोग करें। पहली सिंचाई (CRI अवस्था) पर एक तिहाई यूरिया और 21% जिंक सल्फेट डालें। यूरिया को शाम के समय देना अधिक लाभकारी होता है।`;
-    }
-    return `First irrigation (sowing ke 21 days baad) par Urea ko split dose mein apply karein, sath mein Zinc Sulfate (21%) 10 kg per acre daalein. Soil test card ke anusaar DAP balanced rakhein.`;
-  }
-
-  // 5. Irrigation & Water
-  if (isIrrigation) {
-    if (detectedLang === 'gurmukhi') {
-      return `ਸਿੰਚਾਈ ਲਈ ਮਿੱਟੀ ਦੀ ਨਮੀ ਮੌਜੂਦਾ ${moisture} ਹੈ। ਕਣਕ ਦੀ ਫਸਲ ਵਿੱਚ ਤਾਜ ਦੀਆਂ ਜੜ੍ਹਾਂ (CRI ਸਟੇਜ) 'ਤੇ ਪਹਿਲਾ ਪਾਣੀ ਲਗਾਉਣਾ ਬਹੁਤ ਜ਼ਰੂਰੀ ਹੁੰਦਾ ਹੈ। ਝੋਨੇ ਵਿੱਚ ਪਾਣੀ ਬਚਾਉਣ ਲਈ AWD ਤਕਨੀਕ ਅਪਣਾਓ।`;
-    }
-    if (detectedLang === 'hindi') {
-      return `अभी खेत की मिट्टी की नमी ${moisture} है। गेहूं में पहली सिंचाई 20-25 दिन बाद (CRI स्टेज) पर अवश्य करें। जरूरत से ज्यादा पानी न भरें।`;
-    }
-    return `Current soil moisture level ${moisture} hai. Wheat mein crown root initiation (CRI) stage par timely irrigation sabse critical hoti hai. Water conservation ke liye AWD practice follow karein.`;
-  }
-
-  // 6. Helplines
-  if (isHelpline) {
-    if (detectedLang === 'gurmukhi') {
-      return `ਪੰਜਾਬ ਦੇ ਕਿਸਾਨਾਂ ਲਈ ਜ਼ਰੂਰੀ ਨੰਬਰ:\n• ਕਿਸਾਨ ਕਾਲ ਸੈਂਟਰ: 1800-180-1551 (ਟੋਲ ਫ੍ਰੀ)\n• KVK ਫਤਿਹਗੜ੍ਹ ਸਾਹਿਬ: 81465-70699 / 01763-221217\n• PAU ਲੁਧਿਆਣਾ: 0161-2401960`;
-    }
-    if (detectedLang === 'hindi') {
-      return `किसानों के लिए आवश्यक हेल्पलाइन:\n• किसान कॉल सेंटर: 1800-180-1551 (टोल-फ्री)\n• KVK फतेहगढ़ साहिब: 81465-70699\n• PAU लुधियाना: 0161-2401960\n• PM-KISAN सहायता: 155261`;
-    }
-    return `Official Farmer Helplines:\n• Kisan Call Centre: 1800-180-1551 (All India, Toll-Free)\n• KVK Fatehgarh Sahib: 81465-70699 / 01763-221217\n• PAU Ludhiana: 0161-2401960\n• PM-KISAN IVRS: 155261`;
-  }
-
-  // 7. Schemes
-  if (isScheme) {
-    if (detectedLang === 'gurmukhi') {
-      return `PM-KISAN ਸਕੀਮ ਦੀ ਕਿਸ਼ਤ ਜਾਂ ਈ-ਕੇਵਾਈਸੀ (e-KYC) ਦੀ ਸਥਿਤੀ ਜਾਣਨ ਲਈ ਹੈਲਪਲਾਈਨ 155261 ਜਾਂ 1800-11-5526 'ਤੇ ਕਾਲ ਕਰੋ।`;
-    }
-    if (detectedLang === 'hindi') {
-      return `PM-KISAN सम्मान निधि की किस्त या e-KYC की जानकारी हेतु 155261 डायल करें या नजदीकी CSC केंद्र पर बायोमेट्रिक सत्यापन कराएं।`;
-    }
-    return `PM-KISAN installment status aur e-KYC verification ke liye 155261 par call karein ya pmkisan.gov.in par beneficiary status check karein.`;
-  }
-
-  // Default General Advisory
+  // 7. General Agricultural Fallback
   if (detectedLang === 'gurmukhi') {
-    return `ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਕਿਸਾਨ ਵੀਰ ਜੀ! ਮੌਜੂਦਾ ਤਾਪਮਾਨ ${tempStr} ਹੈ ਅਤੇ ਤੁਹਾਡੀ ਫਸਲ (${crop}) ਬਾਰੇ ਕੋਈ ਵੀ ਸਵਾਲ ਹੋਵੇ—ਜਿਵੇਂ ਕਿ ਮਿੱਟੀ ਦੀ ਕਿਸਮ (ਲਾਲ/ਕਾਲੀ ਮਿੱਟੀ), ਖਾਦ, ਕੀੜੇ-ਮਕੌੜੇ, ਬਿਮਾਰੀਆਂ ਜਾਂ ਸਰਕਾਰੀ ਸਕੀਮਾਂ—ਤੁਸੀਂ ਬੇਝਿਜਕ ਪੁੱਛ ਸਕਦੇ ਹੋ।`;
+    return `ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਕਿਸਾਨ ਵੀਰ ਜੀ! ਤੁਹਾਡੀ ਫਸਲ (${crop}) ਜਾਂ ਖੇਤੀਬਾੜੀ ਦੇ ਕਿਸੇ ਵੀ ਵਿਸ਼ੇ ਬਾਰੇ—ਜਿਵੇਂ ਕਿ ਤੁਲਸੀ, ਕਣਕ, ਸਰ੍ਹੋਂ, ਸਿੰਚਾਈ, ਖਾਦਾਂ ਜਾਂ ਕੀੜਿਆਂ ਦੀ ਰੋਕਥਾਮ—ਤੁਸੀਂ ਸਵਾਲ ਪੁੱਛ ਸਕਦੇ ਹੋ।
+
+ਤੁਹਾਡੀ ਫਸਲ ਵਿੱਚ ਇਸ ਵੇਲੇ ਕੋਈ ਵਿਸ਼ੇਸ਼ ਸਮੱਸਿਆ ਆ ਰਹੀ ਹੈ?`;
   }
   if (detectedLang === 'hindi') {
-    return `नमस्ते किसान भाई! आपके क्षेत्र का तापमान अभी ${tempStr} और नमी ${humidity} है। आप मिट्टी के प्रकार (लाल/काली मिट्टी), फसल चयन, खाद प्रबंधन, रोग निदान या मौसम संबंधी कोई भी सवाल पूछ सकते हैं।`;
+    return `नमस्ते किसान भाई! आपकी फसल (${crop}) या खेती-बाड़ी से संबंधित किसी भी विषय—जैसे गेहूं, सरसों, तुलसी, खाद प्रबंधन, सिंचाई या कीट नियंत्रण—पर आप सीधे सवाल पूछ सकते हैं।
+
+आपकी फसल में वर्तमान में क्या लक्षण या समस्या दिख रही है?`;
   }
-  return `Namaste Kisan ji! Field temperature ${tempStr} hai aur humidity ${humidity} hai. Aap soil types (lal/kali mitti), crop selection, fertilizer schedule, ya pest diagnosis ke baare mein poohein!`;
+  return `Namaste Kisan ji! Aap apni crop (${crop}) ya kisi bhi farming topic—tulsi care, wheat yellowing, sarson keede, irrigation schedule, ya fertilizer split dose—ke baare mein pooch sakte hain.
+
+Aapki crop mein abhi kya specific issue aa raha hai?`;
 }
 
-// Unified LLM Invoker: Handles OpenAI ChatGPT and Google Gemini
-async function invokeLiveLLM(cleanMsg, detectedLang, context) {
-  const farmContextStr = `Current Farm Telemetry:
-- Location: ${context?.location || 'Fatehgarh Sahib, Punjab'}
-- Temperature: ${context?.temp || '24.5°C'}
-- Relative Humidity: ${context?.humidity || '58%'}
-- Soil Moisture: ${context?.moisture || '42%'}
-- Registered Farmer: ${context?.farmerName || 'Farmer'}
-- Primary Crop: ${context?.farmerCrop || 'Wheat'}
-- Last Scanned Item: ${context?.lastScan ? JSON.stringify(context.lastScan) : 'None'}`;
-
-  const systemInstruction = `You are "Kisan AI", an expert precision agricultural advisor for farmers in Punjab, Haryana, and North India.
-Guidelines:
-1. Respond in the user's selected language: Gurmukhi (ਪੰਜਾਬੀ), Devanagari (हिन्दी), or Latin Hinglish (matching user's script).
-2. Answer thoroughly, practically, and conversationally. If the farmer asks about soil types (e.g. red soil / lal mitti, sandy loam), recommend the best crops, manure/fertilizer needs, and water management.
-3. Ground all agronomic advice in verified Punjab Agricultural University (PAU), ICAR, and Krishi Vigyan Kendra (KVK) standards.
-4. Integrate the provided real-time telemetry (${farmContextStr}) when relevant.
-5. Provide helpline numbers when appropriate: Kisan Call Centre (1800-180-1551) or KVK Fatehgarh Sahib (81465-70699).`;
-
-  // 1. Try Google Gemini if configured
+// Unified LLM Invoker: Handles Google Gemini (Primary: Gemini 2.5 Flash) and OpenAI ChatGPT fallback
+async function invokeLiveLLM(cleanMsg, detectedLang, context = {}, history = []) {
   const geminiKey = getGeminiApiKey();
+  const systemInstructionText = buildAgriculturalSystemPrompt(detectedLang, context);
+
+  // 1. Google Gemini (Primary Intelligence Engine)
   if (geminiKey) {
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-2.5-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    
+    // Prepare multi-turn contents from conversation history
+    const contents = [];
+    if (Array.isArray(history) && history.length > 0) {
+      const validTurns = history.slice(-6).filter(t => t && t.text && typeof t.text === 'string' && t.text.trim());
+      for (const turn of validTurns) {
+        contents.push({
+          role: turn.role === 'model' || turn.role === 'ai' || turn.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: turn.text.trim() }]
+        });
+      }
+    }
+    // Append current user message
+    contents.push({
+      role: 'user',
+      parts: [{ text: cleanMsg }]
+    });
+
     for (const model of modelsToTry) {
       try {
         const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey)}`;
@@ -1153,17 +1309,14 @@ Guidelines:
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { text: `${systemInstruction}\n\nFarmer Query: ${cleanMsg}` }
-                ]
-              }
-            ],
+            systemInstruction: {
+              parts: [{ text: systemInstructionText }]
+            },
+            contents,
             generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 800
+              temperature: 0.35,
+              topP: 0.95,
+              maxOutputTokens: 1024
             }
           })
         });
@@ -1171,27 +1324,69 @@ Guidelines:
         if (response.ok) {
           const data = await response.json();
           const geminiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (geminiText) {
+          if (geminiText && typeof geminiText === 'string' && geminiText.trim()) {
             return {
               reply: geminiText.trim(),
               source: `Google Gemini (${model})`,
+              model,
               language: detectedLang
             };
           }
         } else {
           const errText = await response.text();
-          console.warn(`[GEMINI API ${model}] Non-200 response: ${response.status}`, errText.slice(0, 150));
+          console.warn(`[GEMINI API ${model}] HTTP ${response.status}:`, errText.slice(0, 180));
+          
+          // Fallback if top-level systemInstruction format returns 400
+          if (response.status === 400) {
+            const retryRes = await fetch(geminiEndpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [
+                  { role: 'user', parts: [{ text: `${systemInstructionText}\n\nFarmer Query: ${cleanMsg}` }] }
+                ],
+                generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
+              })
+            });
+            if (retryRes.ok) {
+              const retryData = await retryRes.json();
+              const text = retryData?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) {
+                return {
+                  reply: text.trim(),
+                  source: `Google Gemini (${model})`,
+                  model,
+                  language: detectedLang
+                };
+              }
+            }
+          }
         }
       } catch (geminiErr) {
-        console.warn(`[GEMINI API ${model}] Error calling Gemini:`, geminiErr.message);
+        console.warn(`[GEMINI API ${model}] Connection error:`, geminiErr.message);
       }
     }
+  } else {
+    console.warn('[GEMINI AI] No API key detected in GEMINI_API_KEY / GOOGLE_API_KEY environment variables.');
   }
 
-  // 2. Try OpenAI ChatGPT if configured
+  // 2. Secondary LLM: Try OpenAI if configured
   const openaiKey = getOpenAIApiKey();
   if (openaiKey) {
     try {
+      const messages = [{ role: 'system', content: systemInstructionText }];
+      if (Array.isArray(history) && history.length > 0) {
+        history.slice(-6).forEach(h => {
+          if (h && h.text) {
+            messages.push({
+              role: h.role === 'model' || h.role === 'ai' ? 'assistant' : 'user',
+              content: h.text
+            });
+          }
+        });
+      }
+      messages.push({ role: 'user', content: cleanMsg });
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -1200,12 +1395,9 @@ Guidelines:
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemInstruction },
-            { role: 'user', content: cleanMsg }
-          ],
+          messages,
           temperature: 0.4,
-          max_tokens: 800
+          max_tokens: 1024
         })
       });
 
@@ -1216,6 +1408,7 @@ Guidelines:
           return {
             reply: text.trim(),
             source: 'OpenAI ChatGPT (gpt-4o-mini)',
+            model: 'gpt-4o-mini',
             language: detectedLang
           };
         }
@@ -1230,7 +1423,7 @@ Guidelines:
 
 app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
   try {
-    const { message, language, context } = req.body;
+    const { message, language, context, history } = req.body;
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ success: false, message: 'Message text is required.' });
     }
@@ -1238,23 +1431,25 @@ app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
     const cleanMsg = message.trim();
     const detectedLang = language || detectScriptLanguage(cleanMsg);
 
-    // Attempt live LLM invocation (OpenAI or Gemini)
-    const liveResult = await invokeLiveLLM(cleanMsg, detectedLang, context);
-    if (liveResult) {
+    // Call live Gemini LLM
+    const liveResult = await invokeLiveLLM(cleanMsg, detectedLang, context, history);
+    if (liveResult && liveResult.reply) {
       return res.json({
         success: true,
         reply: liveResult.reply,
         source: liveResult.source,
-        language: detectedLang
+        model: liveResult.model,
+        language: liveResult.language || detectedLang
       });
     }
 
-    // High quality domain expert fallback
+    // High quality PAU domain fallback if live AI is unavailable
     const fallbackReply = getExpertAgriculturalResponse(cleanMsg, detectedLang, context);
     return res.json({
       success: true,
       reply: fallbackReply,
-      source: 'Verified Regional Agro-Advisory Engine (Offline / Standalone)',
+      source: 'Verified Regional Agro-Advisory Engine (Offline Fallback)',
+      isFallback: true,
       language: detectedLang
     });
   } catch (error) {

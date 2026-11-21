@@ -212,9 +212,38 @@ window.ChatbotModule = (function () {
   // Chat & Real-Time Voice Waveform Subsystem
   // -------------------------------------------------------------
   function detectScript(text) {
+    if (!text) return 'hinglish';
+    // Gurmukhi script (ਪੰਜਾਬੀ)
     if (/[\u0A00-\u0A7F]/.test(text)) return 'gurmukhi';
+    // Devanagari script (हिन्दी)
     if (/[\u0900-\u097F]/.test(text)) return 'hindi';
+
+    const lower = text.toLowerCase();
+    // Distinctive Punjabi Roman keywords
+    if (/\b(kive|kiven|kinve|kehri|kehda|fasal|pani|paani|launa|bija|kadon|kado|kanak|jbona|narma|sarson|sarhon|mitti|tuhadi|mera|meri|vich|te|nu|chahida|chahidi|dasso|daso|thik|theek|karan|kara|laaye|laayiye|keeda|keede)\b/.test(lower)) {
+      return 'gurmukhi';
+    }
+
+    // English detection
+    if (/^(when|what|how|why|which|can|should|tell|is|are|do|does)\b/i.test(text.trim())) {
+      return 'english';
+    }
+
     return 'hinglish';
+  }
+
+  function cleanTextForSpeech(text) {
+    if (!text) return '';
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/#{1,6}\s+/g, '')
+      .replace(/`{1,3}.*?`{1,3}/gs, '')
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+      .replace(/[•\-\*]/g, '')
+      .replace(/\b(https?:\/\/[^\s]+)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function formatMarkdown(text) {
@@ -232,12 +261,27 @@ window.ChatbotModule = (function () {
 
     box.innerHTML = state.chatHistory.map((m, idx) => {
       const isUser = m.role === 'user';
+      if (m.isLoading) {
+        return `
+          <div class="flex justify-start">
+            <div class="max-w-[85%] rounded-2xl px-4 py-3 text-sm chat-bubble-ai border border-slate-200">
+              <div class="flex items-center gap-2 py-1 text-slate-500">
+                <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse [animation-delay:200ms]"></span>
+                <span class="w-2 h-2 rounded-full bg-emerald-600 animate-pulse [animation-delay:400ms]"></span>
+                <span class="text-xs font-semibold text-emerald-800 ml-1">Kisan AI is analyzing with Gemini...</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
       return `
         <div class="flex ${isUser ? 'justify-end' : 'justify-start'}">
           <div class="max-w-[85%] rounded-2xl px-4 py-3 text-sm ${isUser ? 'chat-bubble-user' : 'chat-bubble-ai'}">
             ${m.langTag ? `<div class="text-[10px] font-bold uppercase tracking-wider opacity-75 mb-1">${m.langTag}</div>` : ''}
             <div class="leading-relaxed whitespace-pre-line">${isUser ? m.text : formatMarkdown(m.text)}</div>
-            ${!isUser && m.text !== 'Analyzing agricultural data & formulating response...' ? `
+            ${!isUser ? `
               <div class="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-end">
                 <button type="button" class="copy-chat-btn text-[10px] font-bold text-slate-500 hover:text-emerald-800 flex items-center gap-1 transition" data-idx="${idx}">
                   <span>📋</span><span>Copy</span>
@@ -268,11 +312,14 @@ window.ChatbotModule = (function () {
     if (!state.ttsEnabled || !('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
+      const cleanVoiceText = cleanTextForSpeech(text);
+      if (!cleanVoiceText) return;
+
+      const utter = new SpeechSynthesisUtterance(cleanVoiceText);
       if (lang === 'gurmukhi') utter.lang = 'pa-IN';
       else if (lang === 'hindi') utter.lang = 'hi-IN';
       else utter.lang = 'en-IN';
-      utter.rate = 1.0;
+      utter.rate = 0.95;
       window.speechSynthesis.speak(utter);
     } catch (e) {
       console.warn('TTS playback issue:', e);
@@ -283,27 +330,43 @@ window.ChatbotModule = (function () {
     const clean = (userText || '').trim();
     if (!clean) return;
 
+    if (state.isProcessingMessage) return;
+    state.isProcessingMessage = true;
+
     const detectedLang = detectScript(clean);
-    const langLabel = detectedLang === 'gurmukhi' ? 'ਪੰਜਾਬੀ (Gurmukhi)' : detectedLang === 'hindi' ? 'हिन्दी (Devanagari)' : 'Hinglish';
+    const langLabel = detectedLang === 'gurmukhi' ? 'ਪੰਜਾਬੀ (Gurmukhi)' : detectedLang === 'hindi' ? 'हिन्दी (Devanagari)' : (detectedLang === 'english' ? 'English' : 'Hinglish');
+
+    // Extract recent conversation history for multi-turn context (up to 6 turns)
+    const conversationHistory = state.chatHistory
+      .filter(m => m.text && !m.isLoading && m.text !== 'Analyzing agricultural data & formulating response...')
+      .slice(-6)
+      .map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        text: m.text
+      }));
 
     state.chatHistory.push({ role: 'user', text: clean, langTag: langLabel });
     const pendingIdx = state.chatHistory.length;
     state.chatHistory.push({
       role: 'ai',
-      text: 'Analyzing agricultural data & formulating response...',
+      isLoading: true,
+      text: '',
       langTag: `Kisan AI • ${langLabel}`
     });
     renderChat();
 
     const telemetry = window.TelemetryModule?.getState() || {};
     const lastScan = window.ScannerModule?.getCurrentResult() || null;
+    const hasRealTelemetry = Boolean(telemetry.tempC && telemetry.source !== 'mock');
 
     const requestContext = {
-      temp: window.TelemetryModule?.formatTemp(telemetry.tempC || 24.5) || '24.5°C',
-      humidity: `${telemetry.humidity || 58}%`,
-      moisture: `${telemetry.moisture || 42}%`,
-      farmerName: state.registeredFarmer?.name || 'Farmer',
+      hasRealTelemetry,
+      temp: hasRealTelemetry ? window.TelemetryModule?.formatTemp(telemetry.tempC) : null,
+      humidity: hasRealTelemetry && telemetry.humidity ? `${telemetry.humidity}%` : null,
+      moisture: hasRealTelemetry && telemetry.moisture ? `${telemetry.moisture}%` : null,
+      farmerName: state.registeredFarmer?.name || window.AuthModule?.getUser()?.user_metadata?.full_name || 'Farmer',
       farmerCrop: state.registeredFarmer?.crop || 'Wheat',
+      location: state.registeredFarmer?.location || 'Punjab',
       lastScan
     };
 
@@ -318,7 +381,8 @@ window.ChatbotModule = (function () {
         body: JSON.stringify({
           message: clean,
           language: detectedLang,
-          context: requestContext
+          context: requestContext,
+          history: conversationHistory
         })
       });
 
@@ -330,21 +394,25 @@ window.ChatbotModule = (function () {
 
       state.chatHistory[pendingIdx] = {
         role: 'ai',
+        isLoading: false,
         text: reply,
         langTag: sourceBadge
       };
       renderChat();
       speakReply(reply, detectedLang);
     } catch (err) {
-      console.warn('Chat request error, using fallback:', err);
-      const fallbackText = `Current field temperature is ${requestContext.temp} and soil moisture is ${requestContext.moisture}. For urgent assistance, please contact Kisan Call Centre 1800-180-1551 or KVK Fatehgarh Sahib (81465-70699).`;
+      console.warn('Chat request error:', err);
+      const fallbackText = `Unable to connect to the live AI advisor right now. Please check your internet connection or call our toll-free farmer helpline 1800-180-1551.`;
       state.chatHistory[pendingIdx] = {
         role: 'ai',
+        isLoading: false,
         text: fallbackText,
-        langTag: `Kisan AI • Offline Advisory`
+        langTag: `Kisan AI • Connection Error`
       };
       renderChat();
       speakReply(fallbackText, detectedLang);
+    } finally {
+      state.isProcessingMessage = false;
     }
   }
 
