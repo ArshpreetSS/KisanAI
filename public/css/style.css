@@ -1,30 +1,31 @@
 /* ==============================================================
-   Kisan AI — Award-Winning Agritech UI & Cyber-Agricultural Design
-   Engineered for High Legibility, Fluidity & Precision Agro-Intelligence
+   Kisan AI — Precision Agriculture Platform & Modern UI System
+   Clean, Modern, Accessible Design System with Supabase Auth
    ============================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&family=Noto+Sans+Gurmukhi:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800&display=swap');
 
 :root {
-  --agri-dark: #064e3b;
-  --agri-primary: #16a34a;
-  --agri-primary-hover: #15803d;
-  --agri-emerald-glow: rgba(22, 163, 74, 0.25);
-  --agri-light: #f0fdf4;
-  --agri-surface: #f8fafc;
-  --agri-card-bg: rgba(255, 255, 255, 0.94);
-  --agri-card-border: rgba(226, 232, 240, 0.9);
+  --agri-dark: #0f172a;
+  --agri-primary: #15803d;
+  --agri-primary-hover: #166534;
+  --agri-primary-light: #f0fdf4;
+  --agri-border: #e2e8f0;
+  --agri-border-hover: #cbd5e1;
+  --agri-surface: #ffffff;
+  --agri-bg: #f8fafc;
+  --agri-text: #0f172a;
+  --agri-text-muted: #64748b;
 }
 
 body {
   font-family: 'Plus Jakarta Sans', 'Inter', 'Noto Sans Gurmukhi', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #f8fafc;
+  background-color: var(--agri-bg);
   background-image: 
-    radial-gradient(at 0% 0%, rgba(240, 253, 244, 0.9) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(236, 253, 245, 0.8) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(241, 245, 249, 0.7) 0px, transparent 60%);
+    radial-gradient(at 0% 0%, rgba(240, 253, 244, 0.6) 0px, transparent 40%),
+    radial-gradient(at 100% 0%, rgba(241, 245, 249, 0.8) 0px, transparent 40%);
   background-attachment: fixed;
-  color: #0f172a;
+  color: var(--agri-text);
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
@@ -52,39 +53,35 @@ body {
 
 /* Enhanced 4-Interface Navigation Tabs */
 .tab-btn {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid transparent;
   user-select: none;
 }
 .tab-btn:hover:not(.tab-active) {
   background-color: #f1f5f9;
-  transform: translateY(-1px);
+  color: #0f172a;
 }
 .tab-btn.tab-active {
-  background: linear-gradient(135deg, #16a34a, #15803d) !important;
+  background: #15803d !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 20px -2px rgba(22, 163, 74, 0.38);
+  box-shadow: 0 2px 8px -1px rgba(21, 128, 61, 0.35);
   border-color: #166534;
-  transform: translateY(-2px);
 }
 
-/* Glassmorphic Cards with Ambient Glow */
+/* Polished Card Surface */
 .agri-card {
-  background-color: var(--agri-card-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--agri-card-border);
-  border-radius: 1.5rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
-  transition: box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, transform 0.25s ease;
+  background-color: var(--agri-surface);
+  border: 1px solid var(--agri-border);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.2s ease;
 }
 .agri-card:hover {
-  border-color: rgba(34, 197, 94, 0.35);
-  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.08), 0 4px 8px -2px rgba(0, 0, 0, 0.03);
-  transform: translateY(-2px);
+  border-color: var(--agri-border-hover);
+  box-shadow: 0 6px 20px -4px rgba(15, 23, 42, 0.08);
 }
 
-/* Glowing Neon SVG Circular Gauges */
+/* Clean SVG Circular Gauges */
 .gauge-circle-bg {
   fill: none;
   stroke: #f1f5f9;
@@ -95,138 +92,99 @@ body {
   stroke-width: 8;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-  filter: drop-shadow(0 0 6px rgba(22, 163, 74, 0.35));
 }
 
-/* Cyber-Agronomy Camera HUD Viewfinder */
+/* Camera Viewfinder Box */
 .camera-hud-frame {
   position: relative;
-  background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
-  border-radius: 1.5rem;
+  background: #0f172a;
+  border-radius: 1.25rem;
   overflow: hidden;
-  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.9), 0 8px 30px rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(34, 197, 94, 0.25);
+  border: 1px solid #1e293b;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
-/* HUD Target Corners */
+/* Viewfinder Target Guide Corners */
 .hud-corner {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-color: #22c55e;
   pointer-events: none;
   z-index: 10;
-  filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.6));
 }
-.hud-corner-tl { top: 16px; left: 16px; border-top: 3.5px solid #22c55e; border-left: 3.5px solid #22c55e; border-top-left-radius: 6px; }
-.hud-corner-tr { top: 16px; right: 16px; border-top: 3.5px solid #22c55e; border-right: 3.5px solid #22c55e; border-top-right-radius: 6px; }
-.hud-corner-bl { bottom: 16px; left: 16px; border-bottom: 3.5px solid #22c55e; border-left: 3.5px solid #22c55e; border-bottom-left-radius: 6px; }
-.hud-corner-br { bottom: 16px; right: 16px; border-bottom: 3.5px solid #22c55e; border-right: 3.5px solid #22c55e; border-bottom-right-radius: 6px; }
+.hud-corner-tl { top: 14px; left: 14px; border-top: 3px solid #22c55e; border-left: 3px solid #22c55e; border-top-left-radius: 4px; }
+.hud-corner-tr { top: 14px; right: 14px; border-top: 3px solid #22c55e; border-right: 3px solid #22c55e; border-top-right-radius: 4px; }
+.hud-corner-bl { bottom: 14px; left: 14px; border-bottom: 3px solid #22c55e; border-left: 3px solid #22c55e; border-bottom-left-radius: 4px; }
+.hud-corner-br { bottom: 14px; right: 14px; border-bottom: 3px solid #22c55e; border-right: 3px solid #22c55e; border-bottom-right-radius: 4px; }
 
-/* Rotating HUD Reticle */
+/* Subtle Center Crosshair */
 .hud-crosshair {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 70px;
-  height: 70px;
-  border: 1.5px dashed rgba(34, 197, 94, 0.7);
+  width: 60px;
+  height: 60px;
+  border: 1px dashed rgba(34, 197, 94, 0.4);
   border-radius: 50%;
   pointer-events: none;
   z-index: 10;
-  animation: rotateReticle 16s linear infinite;
-}
-@keyframes rotateReticle {
-  from { transform: translate(-50%, -50%) rotate(0deg); }
-  to { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
-/* Laser Sweep Scanning Line */
-@keyframes scanSweep {
-  0% { top: 6%; opacity: 0.9; }
-  50% { top: 92%; opacity: 1; }
-  100% { top: 6%; opacity: 0.9; }
-}
-.scan-line-anim {
-  animation: scanSweep 2s ease-in-out infinite;
-}
-
-/* Micro Pulse Glow */
+/* Micro Pulse Glow for Live Status */
 @keyframes pulseGlow {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.55; transform: scale(1.08); }
+  50% { opacity: 0.5; transform: scale(1.06); }
 }
 .pulse-indicator {
-  animation: pulseGlow 1.8s infinite;
+  animation: pulseGlow 2s infinite ease-in-out;
 }
 
-/* Modern 4-Box OTP Verification Input */
-.otp-digit-box {
-  width: 3.75rem;
-  height: 3.75rem;
-  text-align: center;
-  font-size: 1.6rem;
-  font-weight: 800;
-  font-family: 'JetBrains Mono', monospace;
-  color: #0f172a;
-  background-color: #ffffff;
-  border: 2px solid #cbd5e1;
-  border-radius: 1.1rem;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  outline: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-.otp-digit-box:focus {
-  border-color: #16a34a;
-  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.18), 0 4px 12px rgba(22, 163, 74, 0.15);
-  transform: translateY(-2px);
-}
-
-/* Supabase 6-Digit Email OTP Box (Optimized for 6 Inputs) */
+/* Supabase 6-Digit Email OTP Box (Individual Inputs) */
 .auth-otp-box {
   width: 100%;
   max-width: 3.25rem;
   height: 3.5rem;
   text-align: center;
-  font-size: 1.45rem;
+  font-size: 1.5rem;
   font-weight: 800;
   font-family: 'JetBrains Mono', monospace;
   color: #0f172a;
   background-color: #ffffff;
   border: 2px solid #cbd5e1;
-  border-radius: 0.95rem;
+  border-radius: 0.85rem;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   outline: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 .auth-otp-box:focus {
-  border-color: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.25), 0 4px 12px rgba(22, 163, 74, 0.15);
-  transform: translateY(-2px);
+  border-color: #15803d;
+  box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.2);
+  transform: translateY(-1px);
 }
 @media (max-width: 480px) {
   .auth-otp-box {
     max-width: 2.65rem;
     height: 2.9rem;
     font-size: 1.25rem;
-    border-radius: 0.75rem;
+    border-radius: 0.65rem;
   }
 }
 
 /* Chat Speech Bubbles */
 .chat-bubble-user {
-  background: linear-gradient(135deg, #16a34a, #15803d);
+  background: #15803d;
   color: #ffffff;
   border-bottom-right-radius: 0.35rem;
-  box-shadow: 0 3px 12px rgba(22, 163, 74, 0.22);
+  box-shadow: 0 2px 6px rgba(21, 128, 61, 0.2);
 }
 .chat-bubble-ai {
   background-color: #ffffff;
   color: #0f172a;
   border: 1px solid #e2e8f0;
   border-bottom-left-radius: 0.35rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 /* Tactile Interactive Buttons */
@@ -236,12 +194,12 @@ button:active {
 
 /* Toast Animation */
 .toast-slide-in {
-  animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes toastIn {
   from {
     opacity: 0;
-    transform: translateY(-20px) scale(0.95);
+    transform: translateY(-16px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -249,44 +207,15 @@ button:active {
   }
 }
 
-/* Glass Card Subtle Hover Border Lighting */
-.agri-card-interactive {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-}
-.agri-card-interactive:hover {
-  transform: translateY(-3px);
-  border-color: rgba(34, 197, 94, 0.45);
-  box-shadow: 0 16px 36px -6px rgba(22, 163, 74, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.04);
-}
-
-/* Shimmer Loading Skeleton */
-@keyframes shimmerAnim {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.skeleton-shimmer {
-  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
-  background-size: 200% 100%;
-  animation: shimmerAnim 1.5s infinite;
-}
-
 /* High-Legibility Focus Rings for Accessibility */
 input:focus-visible, select:focus-visible, button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.35);
+  box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.3);
 }
 
 /* Mobile Viewport Polish */
 @media (max-width: 640px) {
-  .otp-digit-box {
-    width: 3.1rem;
-    height: 3.1rem;
-    font-size: 1.35rem;
-    border-radius: 0.85rem;
-  }
   .camera-hud-frame {
     height: 18rem;
   }
 }
-

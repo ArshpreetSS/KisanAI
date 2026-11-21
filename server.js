@@ -129,8 +129,203 @@ app.get(['/health', '/api/health'], (req, res) => {
 // Supabase Authentication & Profile Endpoints
 // -------------------------------------------------------------
 
+// Rate Limiting Map & Sliding Window Tracker for Auth OTP Endpoints
+const authRateLimitMap = new Map();
+
+function checkAuthRateLimit(identifier, maxRequests = 5, windowMs = 10 * 60 * 1000) {
+  const now = Date.now();
+  const record = authRateLimitMap.get(identifier) || { count: 0, resetAt: now + windowMs };
+  if (now > record.resetAt) {
+    record.count = 1;
+    record.resetAt = now + windowMs;
+    authRateLimitMap.set(identifier, record);
+    return { allowed: true, remaining: maxRequests - 1 };
+  }
+  if (record.count >= maxRequests) {
+    const retryAfterSec = Math.ceil((record.resetAt - now) / 1000);
+    return { allowed: false, retryAfterSec };
+  }
+  record.count += 1;
+  authRateLimitMap.set(identifier, record);
+  return { allowed: true, remaining: maxRequests - record.count };
+}
+
+// Periodic cleanup of rate limit map
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of authRateLimitMap.entries()) {
+    if (now > record.resetAt) {
+      authRateLimitMap.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// POST /api/auth/send-otp: Validates email, enforces rate limiting, and dispatches 6-digit OTP via Supabase
+app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ success: false, error: 'Email address is required.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+    }
+
+    // Rate Limiting: max 5 OTP requests per email & IP per 10 minutes
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'client';
+    const rateCheck = checkAuthRateLimit(`otp_${cleanEmail}_${clientIp}`, 5, 10 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: `Too many OTP requests. Please wait ${rateCheck.retryAfterSec} seconds before requesting another code.`
+      });
+    }
+
+    const { client, isConfigured } = getSupabaseServerClient();
+    if (!isConfigured || !client) {
+      return res.status(503).json({
+        success: false,
+        error: 'Supabase authentication is not configured on the server. Please set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.'
+      });
+    }
+
+    const { data, error } = await client.auth.signInWithOtp({
+      email: cleanEmail,
+      options: { shouldCreateUser: true }
+    });
+
+    if (error) {
+      let errorMsg = error.message;
+      if (errorMsg.toLowerCase().includes('rate limit')) {
+        return res.status(429).json({
+          success: false,
+          error: 'Email rate limit reached in Supabase. Please wait a minute before requesting another code.'
+        });
+      }
+      return res.status(400).json({ success: false, error: errorMsg });
+    }
+
+    return res.json({
+      success: true,
+      message: `A 6-digit verification code has been dispatched to ${cleanEmail}.`,
+      email: cleanEmail
+    });
+  } catch (err) {
+    console.error('Error in /api/auth/send-otp:', err);
+    return res.status(500).json({ success: false, error: 'Server error while dispatching OTP.' });
+  }
+});
+
+// POST /api/auth/verify-otp: Validates 6-digit code against Supabase Auth
+app.post(['/api/auth/verify-otp', '/auth/verify-otp'], async (req, res) => {
+  try {
+    const { email, token } = req.body;
+    if (!email || !token) {
+      return res.status(400).json({ success: false, error: 'Email and 6-digit verification code are required.' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanToken = String(token).trim().replace(/[^0-9]/g, '');
+
+    if (cleanToken.length !== 6) {
+      return res.status(400).json({ success: false, error: 'Verification code must be exactly 6 digits.' });
+    }
+
+    const { client, isConfigured } = getSupabaseServerClient();
+    if (!isConfigured || !client) {
+      return res.status(503).json({
+        success: false,
+        error: 'Supabase authentication is not configured on the server.'
+      });
+    }
+
+    const { data, error } = await client.auth.verifyOtp({
+      email: cleanEmail,
+      token: cleanToken,
+      type: 'email'
+    });
+
+    if (error) {
+      const isExpired = error.message.toLowerCase().includes('expired');
+      const errorMsg = isExpired
+        ? 'Verification code has expired. Please request a new code.'
+        : 'Invalid 6-digit verification code. Please check your email and try again.';
+      return res.status(400).json({ success: false, error: errorMsg });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Email OTP verified successfully!',
+      session: data.session,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        created_at: data.user.created_at,
+        last_sign_in_at: data.user.last_sign_in_at
+      }
+    });
+  } catch (err) {
+    console.error('Error in /api/auth/verify-otp:', err);
+    return res.status(500).json({ success: false, error: 'Server error while verifying OTP.' });
+  }
+});
+
+// GET /api/auth/me: Validates Bearer token and returns authenticated user & profile
+app.get(['/api/auth/me', '/auth/me'], requireAuth, async (req, res) => {
+  try {
+    const { client } = getSupabaseServerClient();
+    let profileData = null;
+
+    if (client) {
+      const { data, error } = await client
+        .from('profiles')
+        .select('*')
+        .eq('id', req.user.id)
+        .maybeSingle();
+
+      if (!error && data) {
+        profileData = data;
+      }
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        created_at: req.user.created_at,
+        last_sign_in_at: req.user.last_sign_in_at,
+        app_metadata: req.user.app_metadata,
+        user_metadata: req.user.user_metadata
+      },
+      profile: profileData || {
+        id: req.user.id,
+        email: req.user.email,
+        full_name: req.user.user_metadata?.full_name || '',
+        phone: '',
+        location: '',
+        primary_crop: '',
+        landholding_acres: null
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/auth/logout: Client session logout
+app.post(['/api/auth/logout', '/auth/logout'], (req, res) => {
+  return res.json({
+    success: true,
+    message: 'Logged out successfully.'
+  });
+});
+
 // GET /api/auth/config: Exposes client-safe Supabase configuration (Publishable/Anon key only)
-app.get('/api/auth/config', (req, res) => {
+app.get(['/api/auth/config', '/auth/config'], (req, res) => {
   const { url, anonKey, isConfigured } = getSupabaseServerClient();
   res.json({
     configured: isConfigured,
@@ -140,7 +335,7 @@ app.get('/api/auth/config', (req, res) => {
 });
 
 // POST /api/auth/config: Save & test Supabase project credentials
-app.post('/api/auth/config', async (req, res) => {
+app.post(['/api/auth/config', '/auth/config'], async (req, res) => {
   try {
     const { supabaseUrl, supabasePublishableKey } = req.body;
     if (!supabaseUrl || !supabasePublishableKey) {
@@ -206,7 +401,7 @@ app.post('/api/auth/config', async (req, res) => {
 });
 
 // GET /api/user/profile: Fetch server-validated user profile from public.profiles
-app.get('/api/user/profile', requireAuth, async (req, res) => {
+app.get(['/api/user/profile', '/user/profile'], requireAuth, async (req, res) => {
   try {
     const { client } = getSupabaseServerClient();
     const { data, error } = await client
@@ -243,7 +438,7 @@ app.get('/api/user/profile', requireAuth, async (req, res) => {
 });
 
 // PUT /api/user/profile: Update user profile in public.profiles table (Server validated)
-app.put('/api/user/profile', requireAuth, async (req, res) => {
+app.put(['/api/user/profile', '/user/profile'], requireAuth, async (req, res) => {
   try {
     const { full_name, phone, location, primary_crop, landholding_acres } = req.body;
     const { client } = getSupabaseServerClient();
