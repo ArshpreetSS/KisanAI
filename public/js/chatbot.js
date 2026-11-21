@@ -277,13 +277,17 @@ window.ChatbotModule = (function () {
       }
 
       return `
-        <div class="flex ${isUser ? 'justify-end' : 'justify-start'}">
-          <div class="max-w-[85%] rounded-2xl px-4 py-3 text-sm ${isUser ? 'chat-bubble-user' : 'chat-bubble-ai'}">
-            ${m.langTag ? `<div class="text-[10px] font-bold uppercase tracking-wider opacity-75 mb-1">${m.langTag}</div>` : ''}
+        <div class="flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm shadow-2xs select-none ${isUser ? 'bg-emerald-800 text-white' : 'bg-emerald-100 border border-emerald-300 text-emerald-950'}">
+            ${isUser ? '👨‍🌾' : '🌾'}
+          </div>
+          <div class="max-w-[85%] sm:max-w-[78%] rounded-2xl px-4 py-3 text-sm ${isUser ? 'chat-bubble-user' : 'chat-bubble-ai'}">
+            ${m.langTag ? `<div class="text-[10px] font-extrabold uppercase tracking-wider ${isUser ? 'text-emerald-100' : 'text-emerald-800'} mb-1.5 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full ${isUser ? 'bg-emerald-300' : 'bg-emerald-500'} inline-block"></span><span>${m.langTag}</span></div>` : ''}
             <div class="leading-relaxed whitespace-pre-line">${isUser ? m.text : formatMarkdown(m.text)}</div>
             ${!isUser ? `
-              <div class="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-end">
-                <button type="button" class="copy-chat-btn text-[10px] font-bold text-slate-500 hover:text-emerald-800 flex items-center gap-1 transition" data-idx="${idx}">
+              <div class="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                <span class="text-[10px] font-medium">Google Gemini 3.8</span>
+                <button type="button" class="copy-chat-btn text-[11px] font-bold text-slate-500 hover:text-emerald-800 flex items-center gap-1 transition px-2 py-0.5 rounded-lg hover:bg-slate-100" data-idx="${idx}">
                   <span>📋</span><span>Copy</span>
                 </button>
               </div>
