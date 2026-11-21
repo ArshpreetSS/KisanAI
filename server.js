@@ -1146,6 +1146,41 @@ Aapki tulsi ke patte peele pad rahe hain ya plant sookh raha hai?`;
 Kya keede phoolon par green-black color ke jhund mein dikh rahe hain?`;
   }
 
+  // 2.5. Wheat Drying / Withering / Sookh Rahi Hai / Suk Gyi ("wheat suk gyi" or "kanak suk rahi hai")
+  if (/suk|sookh|sookhi|sookhna|murjha|dry|drying|sukna|sukha|ਸੁੱਕ|ਸੁੱਕੀ|ਸੁਕ|सूख|मुरझा|ਸਿਉਂਕ|दीमक|termite/.test(contextQuery) && /wheat|kanak|fasal|crop|paudhe|plant|ਕਣਕ|ਗੇਹੂੰ|गेहूं|गेहूँ|गेंहू|gehun|gehu|फसल/.test(contextQuery)) {
+    if (detectedLang === 'gurmukhi') {
+      return `ਕਣਕ ਦੀ ਫਸਲ ਸੁੱਕਣ ਦੇ 3 ਮੁੱਖ ਕਾਰਨ ਹੁੰਦੇ ਹਨ: ਸਿਉਂਕ (ਦੀਮਕ), ਜੜ੍ਹ ਗਲਣ (Root/Foot Rot), ਜਾਂ ਪਾਣੀ ਦੀ ਘਾਟ (ਸੋਕਾ)।
+
+1. **ਸਿਉਂਕ (Termites) ਦੀ ਜਾਂਚ:** ਸੁੱਕੇ ਬੂਟੇ ਨੂੰ ਖਿੱਚ ਕੇ ਦੇਖੋ—ਜੇਕਰ ਉਹ ਬਿਨਾਂ ਜ਼ੋਰ ਲਗਾਏ ਜ਼ਮੀਨ ਵਿੱਚੋਂ ਨਿਕਲ ਆਵੇ ਅਤੇ ਜੜ੍ਹਾਂ ਕੁਤਰੀਆਂ ਹੋਣ:
+   - **ਇਲਾਜ (PAU ਸਿਫਾਰਿਸ਼):** ਕਲੋਰਪਾਇਰੀਫਾਸ (Chlorpyrifos 20 EC) 1.5–2 ਲੀਟਰ ਪ੍ਰਤੀ ਏਕੜ ਨੂੰ 20 ਕਿਲੋ ਰੇਤ ਵਿੱਚ ਮਿਲਾ ਕੇ ਛੱਟਾ ਦਿਓ ਜਾਂ ਸਿੰਚਾਈ ਦੇ ਪਾਣੀ ਨਾਲ ਚਲਾਓ।
+2. **ਜੜ੍ਹ ਗਲਣ (Root Rot/Fusarium):** ਜੇਕਰ ਬੂਟੇ ਦਾ ਤਣਾ ਹੇਠੋਂ ਕਾਲਾ-ਭੂਰਾ ਪੈ ਕੇ ਗਲ ਰਿਹਾ ਹੈ:
+   - **ਇਲਾਜ:** ਕਾਰਬੈਂਡਾਜ਼ਿਮ (Carbendazim 50 WP) 2 ਗ੍ਰਾਮ ਪ੍ਰਤੀ ਲੀਟਰ ਪਾਣੀ ਦਾ ਜੜ੍ਹਾਂ ਕੋਲ ਛਿੜਕਾਅ ਕਰੋ।
+3. **ਸੋਕਾ / ਪਾਣੀ ਦੀ ਕਮੀ:** ਜੇਕਰ ਮਿੱਟੀ ਬਹੁਤ ਖੁਸ਼ਕ ਹੈ ਤਾਂ ਤੁਰੰਤ ਹਲਕੀ ਸਿੰਚਾਈ ਕਰੋ।
+
+ਕੀ ਸੁੱਕੇ ਬੂਟੇ ਖਿੱਚਣ 'ਤੇ ਆਸਾਨੀ ਨਾਲ ਬਾਹਰ ਆ ਰਹੇ ਹਨ, ਜਾਂ ਜੜ੍ਹਾਂ ਹੇਠੋਂ ਕਾਲੀਆਂ ਹਨ?`;
+    }
+    if (detectedLang === 'hindi') {
+      return `गेहूं की फसल सूखने के 3 प्रमुख कारण होते हैं: दीमक (Termite) का प्रकोप, जड़ गलन (Root/Foot Rot), या नमी की कमी (सूखा)।
+
+1. **दीमक (Termite) की पहचान:** सूखे पौधे को खींच कर देखें—यदि वह बिना जोर लगाए आसानी से उखड़ जाए और जड़ें कटी दिखें:
+   - **रोकथाम (PAU सिफारिश):** क्लोरपायरीफॉस 20% EC (Chlorpyrifos 20 EC) 1.5–2 लीटर प्रति एकड़ को 20 किलो बालू रेत में मिलाकर खेत में बिखेरें या सिंचाई के पानी के साथ दें।
+2. **जड़ गलन / फंगस (Root Rot):** यदि पौधे का निचला तना काला या भूरा होकर सड़ रहा है:
+   - **रोकथाम:** कार्बेन्डाजिम 50% WP (Carbendazim) 2 ग्राम प्रति लीटर पानी का जड़ों के पास छिड़काव करें।
+3. **सिंचाई की कमी:** यदि मिट्टी में नमी नहीं है तो तुरंत हल्की सिंचाई करें।
+
+क्या पौधा खींचने पर आसानी से उखड़ रहा है, या तने का निचला भाग काला दिखाई दे रहा है?`;
+    }
+    return `Wheat crop sookhne (dry hone) ke 3 main reasons hote hain: Termites (Deemak), Root Rot (Jadh Galan), ya Moisture Stress (Paani ki kami):
+
+1. **Termite / Deemak Check:** Sookhe paudhe ko kheench kar dekhein—agar bina zor lagaye aasani se ukhad raha hai aur roots kati hui hain:
+   - **Treatment (PAU Standard):** Chlorpyrifos 20 EC (1.5–2 Litres per acre) ko 20 kg ret (sand) mein milakar chhatte dein ya irrigation water ke sath dein.
+2. **Root Rot / Fungal Infection:** Agar paudhe ka nichla stem kaala/brown hokar gal raha hai:
+   - **Treatment:** Carbendazim 50 WP (2g per litre water) ka drenching/spray karein.
+3. **Moisture Stress:** Agar mitti bilkul dry ho chuki hai toh turant halki sinchai (light irrigation) karein.
+
+Kya sookhe paudhe kheenchne par aasani se nikal rahe hain, ya stem ka base kaala pad raha hai?`;
+  }
+
   // 3. Wheat Yellowing / Peeli Pattiyan ("Wheat ki fasal mein peeli pattiyan kyun aa rahi hain?" or "गेहूं में पीलापन क्यों आ रहा है?")
   if (/peeli|peela|peele|peelapan|yellow|ਧੱਬੇ|ਪੀਲਾ|ਰੋਗ|पीला|पीली|पीलापन|रतुआ/.test(contextQuery) && /wheat|kanak|fasal|crop|patte|patti|ਕਣਕ|ਗੇਹੂੰ|गेहूं|गेहूँ|गेंहू|gehun|gehu|पत्ती|पत्ते|ਪੱਤੇ/.test(contextQuery)) {
     if (detectedLang === 'gurmukhi') {
