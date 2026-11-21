@@ -29,6 +29,7 @@
   "author": "Arshpreet Singh Saini",
   "license": "MIT",
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

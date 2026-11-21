@@ -88,11 +88,27 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// AI Provider Environment Variable Resolvers (supports standard & common platform aliases)
+function getGeminiApiKey() {
+  const key = process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GEMINI_API_KEY ||
+    process.env.GEMINI_KEY ||
+    process.env.GOOGLE_API_KEY;
+  return key && typeof key === 'string' && key.trim() !== '' ? key.trim().replace(/^['"]|['"]$/g, '') : null;
+}
+
+function getOpenAIApiKey() {
+  const key = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
+  return key && typeof key === 'string' && key.trim() !== '' ? key.trim().replace(/^['"]|['"]$/g, '') : null;
+}
+
 // Health check endpoint
 app.get(['/health', '/api/health'], (req, res) => {
-  const activeAi = process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim() !== ''
-    ? 'OpenAI ChatGPT'
-    : (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '' ? 'Google Gemini' : 'Verified Offline Agro Engine');
+  const geminiKey = getGeminiApiKey();
+  const openaiKey = getOpenAIApiKey();
+  const activeAi = geminiKey
+    ? 'Google Gemini'
+    : (openaiKey ? 'OpenAI ChatGPT' : 'Verified Offline Agro Engine');
 
   const { isConfigured: supabaseConfigured } = getSupabaseServerClient();
 
@@ -102,8 +118,8 @@ app.get(['/health', '/api/health'], (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'production',
     activeAiProvider: activeAi,
-    geminiConfigured: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== ''),
-    openaiConfigured: Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim() !== ''),
+    geminiConfigured: Boolean(geminiKey),
+    openaiConfigured: Boolean(openaiKey),
     smsGatewayConfigured: Boolean(process.env.FAST2SMS_API_KEY || process.env.TWILIO_ACCOUNT_SID),
     supabaseConfigured
   });
@@ -479,11 +495,13 @@ app.post('/api/alerts/dispatch-sms', async (req, res) => {
 });
 
 app.get('/api/config/ai', (req, res) => {
-  const hasGemini = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '');
-  const hasOpenAI = Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim() !== '');
+  const geminiKey = getGeminiApiKey();
+  const openaiKey = getOpenAIApiKey();
+  const hasGemini = Boolean(geminiKey);
+  const hasOpenAI = Boolean(openaiKey);
 
   res.json({
-    activeProvider: hasOpenAI ? 'openai' : (hasGemini ? 'gemini' : 'offline'),
+    activeProvider: hasGemini ? 'gemini' : (hasOpenAI ? 'openai' : 'offline'),
     hasGemini,
     hasOpenAI
   });
@@ -966,50 +984,13 @@ Guidelines:
 4. Integrate the provided real-time telemetry (${farmContextStr}) when relevant.
 5. Provide helpline numbers when appropriate: Kisan Call Centre (1800-180-1551) or KVK Fatehgarh Sahib (81465-70699).`;
 
-  // 1. Try OpenAI ChatGPT if configured
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (openaiKey && openaiKey.trim() !== '') {
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiKey.trim()}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemInstruction },
-            { role: 'user', content: cleanMsg }
-          ],
-          temperature: 0.4,
-          max_tokens: 800
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) {
-          return {
-            reply: text.trim(),
-            source: 'OpenAI ChatGPT (gpt-4o-mini)',
-            language: detectedLang
-          };
-        }
-      }
-    } catch (openaiErr) {
-      console.warn('[OPENAI API] Error calling ChatGPT:', openaiErr.message);
-    }
-  }
-
-  // 2. Try Google Gemini if configured
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey && geminiKey.trim() !== '') {
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  // 1. Try Google Gemini if configured
+  const geminiKey = getGeminiApiKey();
+  if (geminiKey) {
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-2.5-flash'];
     for (const model of modelsToTry) {
       try {
-        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey.trim())}`;
+        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey)}`;
         const response = await fetch(geminiEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1039,10 +1020,50 @@ Guidelines:
               language: detectedLang
             };
           }
+        } else {
+          const errText = await response.text();
+          console.warn(`[GEMINI API ${model}] Non-200 response: ${response.status}`, errText.slice(0, 150));
         }
       } catch (geminiErr) {
         console.warn(`[GEMINI API ${model}] Error calling Gemini:`, geminiErr.message);
       }
+    }
+  }
+
+  // 2. Try OpenAI ChatGPT if configured
+  const openaiKey = getOpenAIApiKey();
+  if (openaiKey) {
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: cleanMsg }
+          ],
+          temperature: 0.4,
+          max_tokens: 800
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const text = data?.choices?.[0]?.message?.content;
+        if (text) {
+          return {
+            reply: text.trim(),
+            source: 'OpenAI ChatGPT (gpt-4o-mini)',
+            language: detectedLang
+          };
+        }
+      }
+    } catch (openaiErr) {
+      console.warn('[OPENAI API] Error calling ChatGPT:', openaiErr.message);
     }
   }
 
@@ -1319,7 +1340,7 @@ const presetCropPathology = {
 app.post(['/api/scan-analyze', '/.netlify/functions/gemini-scan'], async (req, res) => {
   try {
     const { imageBase64, mimeType, cropHint, category } = req.body;
-    const geminiKey = process.env.GEMINI_API_KEY;
+    const geminiKey = getGeminiApiKey();
 
     const hintKey = (cropHint || category || '').toLowerCase().trim();
     let matchedPreset = null;
@@ -1331,12 +1352,14 @@ app.post(['/api/scan-analyze', '/.netlify/functions/gemini-scan'], async (req, r
       }
     }
 
-    if (geminiKey && geminiKey.trim() !== '' && imageBase64) {
-      try {
-        const rawBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
-        const detectedMime = mimeType || 'image/jpeg';
+    if (geminiKey && imageBase64) {
+      const visionModels = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+      for (const visionModel of visionModels) {
+        try {
+          const rawBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+          const detectedMime = mimeType || 'image/jpeg';
 
-        const prompt = `You are an expert plant pathologist and agronomist for Punjab, India.
+          const prompt = `You are an expert plant pathologist and agronomist for Punjab, India.
 Analyze this uploaded crop, leaf, seed, or agricultural image.
 Provide your response strictly in the following JSON format:
 {
@@ -1358,42 +1381,45 @@ Provide your response strictly in the following JSON format:
   "helpline_contact": "Relevant helpline: KVK Fatehgarh Sahib (81465-70699) or PAU Ludhiana (0161-2401960)"
 }`;
 
-        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(geminiKey.trim())}`;
+          const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${visionModel}:generateContent?key=${encodeURIComponent(geminiKey)}`;
 
-        const response = await fetch(geminiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { text: prompt },
-                  { inlineData: { mimeType: detectedMime, data: rawBase64 } }
-                ]
+          const response = await fetch(geminiEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    { text: prompt },
+                    { inlineData: { mimeType: detectedMime, data: rawBase64 } }
+                  ]
+                }
+              ],
+              generationConfig: {
+                temperature: 0.2,
+                responseMimeType: 'application/json'
               }
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: 'application/json'
-            }
-          })
-        });
+            })
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          const jsonText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (jsonText) {
-            const parsed = JSON.parse(jsonText);
-            return res.json({
-              success: true,
-              result: parsed,
-              source: 'Google Gemini 1.5 Flash Vision'
-            });
+          if (response.ok) {
+            const data = await response.json();
+            const jsonText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (jsonText) {
+              const parsed = JSON.parse(jsonText);
+              return res.json({
+                success: true,
+                result: parsed,
+                source: `Google Gemini (${visionModel}) Vision`
+              });
+            }
+          } else {
+            console.warn(`[VISION ${visionModel}] Response code ${response.status}`);
           }
+        } catch (visionErr) {
+          console.warn(`[VISION ${visionModel}] Error:`, visionErr.message);
         }
-      } catch (visionErr) {
-        console.warn('[VISION API] Gemini Vision fallback:', visionErr.message);
       }
     }
 
