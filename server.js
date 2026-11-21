@@ -49,9 +49,10 @@ async function requireAuth(req, res, next) {
   const { isConfigured, client } = getSupabaseServerClient();
 
   if (!isConfigured || !client) {
+    console.error('[AUTH ERROR] SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY is not set in backend environment variables.');
     return res.status(503).json({
       success: false,
-      error: 'Supabase authentication is not configured on the server. Please set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.'
+      error: 'Authentication service is temporarily unavailable.'
     });
   }
 
@@ -163,7 +164,7 @@ setInterval(() => {
 // POST /api/auth/send-otp: Validates email, enforces rate limiting, and dispatches 6-digit OTP via Supabase
 app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, fullName, phone, location, primaryCrop } = req.body;
     if (!email || typeof email !== 'string') {
       return res.status(400).json({ success: false, error: 'Email address is required.' });
     }
@@ -180,21 +181,30 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
     if (!rateCheck.allowed) {
       return res.status(429).json({
         success: false,
-        error: `Too many OTP requests. Please wait ${rateCheck.retryAfterSec} seconds before requesting another code.`
+        error: `Too many verification code requests. Please wait ${rateCheck.retryAfterSec} seconds before requesting another code.`
       });
     }
 
     const { client, isConfigured } = getSupabaseServerClient();
     if (!isConfigured || !client) {
+      console.error('[AUTH ERROR] SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY is not set in backend environment variables.');
       return res.status(503).json({
         success: false,
-        error: 'Supabase authentication is not configured on the server. Please set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.'
+        error: 'Farmer verification service is temporarily unavailable. Please try again shortly or contact our farmer helpline at 1800-180-1551.'
       });
     }
 
     const { data, error } = await client.auth.signInWithOtp({
       email: cleanEmail,
-      options: { shouldCreateUser: true }
+      options: {
+        shouldCreateUser: true,
+        data: {
+          full_name: fullName ? String(fullName).trim() : undefined,
+          phone: phone ? String(phone).trim() : undefined,
+          location: location ? String(location).trim() : undefined,
+          primary_crop: primaryCrop ? String(primaryCrop).trim() : undefined
+        }
+      }
     });
 
     if (error) {
@@ -215,7 +225,7 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
     });
   } catch (err) {
     console.error('Error in /api/auth/send-otp:', err);
-    return res.status(500).json({ success: false, error: 'Server error while dispatching OTP.' });
+    return res.status(500).json({ success: false, error: 'Server error while dispatching verification code.' });
   }
 });
 
@@ -236,9 +246,10 @@ app.post(['/api/auth/verify-otp', '/auth/verify-otp'], async (req, res) => {
 
     const { client, isConfigured } = getSupabaseServerClient();
     if (!isConfigured || !client) {
+      console.error('[AUTH ERROR] SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY is not set in backend environment variables.');
       return res.status(503).json({
         success: false,
-        error: 'Supabase authentication is not configured on the server.'
+        error: 'Farmer verification service is temporarily unavailable. Please try again shortly.'
       });
     }
 
@@ -256,6 +267,24 @@ app.post(['/api/auth/verify-otp', '/auth/verify-otp'], async (req, res) => {
       return res.status(400).json({ success: false, error: errorMsg });
     }
 
+    // Auto-upsert into public.profiles if user metadata is present
+    if (data.user && client) {
+      try {
+        const userMeta = data.user.user_metadata || {};
+        await client.from('profiles').upsert({
+          id: data.user.id,
+          email: data.user.email,
+          full_name: userMeta.full_name || '',
+          phone: userMeta.phone || '',
+          location: userMeta.location || '',
+          primary_crop: userMeta.primary_crop || '',
+          updated_at: new Date().toISOString()
+        });
+      } catch (upsertErr) {
+        console.warn('[AUTH] Profile sync note:', upsertErr.message);
+      }
+    }
+
     return res.json({
       success: true,
       message: 'Email OTP verified successfully!',
@@ -269,7 +298,7 @@ app.post(['/api/auth/verify-otp', '/auth/verify-otp'], async (req, res) => {
     });
   } catch (err) {
     console.error('Error in /api/auth/verify-otp:', err);
-    return res.status(500).json({ success: false, error: 'Server error while verifying OTP.' });
+    return res.status(500).json({ success: false, error: 'Server error while verifying verification code.' });
   }
 });
 
@@ -332,72 +361,6 @@ app.get(['/api/auth/config', '/auth/config'], (req, res) => {
     supabaseUrl: url,
     supabasePublishableKey: anonKey
   });
-});
-
-// POST /api/auth/config: Save & test Supabase project credentials
-app.post(['/api/auth/config', '/auth/config'], async (req, res) => {
-  try {
-    const { supabaseUrl, supabasePublishableKey } = req.body;
-    if (!supabaseUrl || !supabasePublishableKey) {
-      return res.status(400).json({
-        success: false,
-        message: 'Both Project URL and Publishable/Anon Key are required.'
-      });
-    }
-
-    const cleanUrl = supabaseUrl.trim().replace(/\/+$/, '');
-    const cleanKey = supabasePublishableKey.trim();
-
-    if (!cleanUrl.startsWith('https://')) {
-      return res.status(400).json({
-        success: false,
-        message: 'Supabase URL must start with https:// (e.g. https://your-project.supabase.co).'
-      });
-    }
-
-    // Test client initialization and basic ping
-    const testClient = createClient(cleanUrl, cleanKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    });
-    const { error: pingErr } = await testClient.auth.getSession();
-    if (pingErr) {
-      return res.status(400).json({
-        success: false,
-        message: 'Could not connect to Supabase: ' + pingErr.message
-      });
-    }
-
-    process.env.SUPABASE_URL = cleanUrl;
-    process.env.SUPABASE_PUBLISHABLE_KEY = cleanKey;
-
-    try {
-      const envPath = path.join(__dirname, '.env');
-      let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
-      const pairs = [
-        ['SUPABASE_URL', cleanUrl],
-        ['SUPABASE_PUBLISHABLE_KEY', cleanKey]
-      ];
-      pairs.forEach(([k, v]) => {
-        const re = new RegExp(`${k}=.*`);
-        if (re.test(envContent)) envContent = envContent.replace(re, `${k}=${v}`);
-        else envContent += `\n${k}=${v}`;
-      });
-      fs.writeFileSync(envPath, envContent, 'utf8');
-    } catch (saveErr) {
-      console.warn('Could not write to .env:', saveErr.message);
-    }
-
-    return res.json({
-      success: true,
-      message: 'Supabase configuration saved and verified successfully!',
-      supabaseUrl: cleanUrl
-    });
-  } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: 'Failed configuring Supabase: ' + err.message
-    });
-  }
 });
 
 // GET /api/user/profile: Fetch server-validated user profile from public.profiles
