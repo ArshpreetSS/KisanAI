@@ -1218,11 +1218,15 @@ app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`🌾 Kisan AI Application running at: http://localhost:${PORT}`);
-  console.log(`📡 Open-Meteo Weather Integration: Active`);
-  console.log(`🔐 Secure Server-Side OTP & Farmer Registration: Active`);
-  console.log(`🤖 Multilingual AI Engine: Gemini & ChatGPT API Multi-Provider Ready`);
-  console.log(`=======================================================`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`🌾 Kisan AI Application running at: http://localhost:${PORT}`);
+    console.log(`📡 Open-Meteo Weather Integration: Active`);
+    console.log(`🔐 Secure Server-Side OTP & Farmer Registration: Active`);
+    console.log(`🤖 Multilingual AI Engine: Gemini & ChatGPT API Multi-Provider Ready`);
+    console.log(`=======================================================`);
+  });
+}
+
+module.exports = app;
