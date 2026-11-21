@@ -2,17 +2,38 @@
   publish = "public"
   functions = "netlify/functions"
 
+# 1. Chatbot API redirect
 [[redirects]]
   from = "/api/chat"
   to = "/.netlify/functions/gemini-chat"
   status = 200
 
+# 2. Scanner Pathology Vision API redirect
 [[redirects]]
   from = "/api/scan-analyze"
   to = "/.netlify/functions/gemini-scan"
   status = 200
 
+# 3. Weather Telemetry API redirect
+[[redirects]]
+  from = "/api/weather/live"
+  to = "/.netlify/functions/weather"
+  status = 200
+
+# 4. AI Provider Config API redirect
+[[redirects]]
+  from = "/api/config/ai"
+  to = "/.netlify/functions/config-ai"
+  status = 200
+
+# 5. OTP Registration API redirects
 [[redirects]]
   from = "/api/otp/*"
   to = "/.netlify/functions/otp/:splat"
+  status = 200
+
+# 6. SPA fallback
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
   status = 200
