@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 const app = express();
@@ -11,6 +12,67 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Supabase Server-Side Client Factory
+function getSupabaseServerClient() {
+  const url = process.env.SUPABASE_URL && process.env.SUPABASE_URL.trim() !== ''
+    ? process.env.SUPABASE_URL.trim().replace(/\/+$/, '')
+    : null;
+  const anonKey = (process.env.SUPABASE_PUBLISHABLE_KEY && process.env.SUPABASE_PUBLISHABLE_KEY.trim() !== '')
+    ? process.env.SUPABASE_PUBLISHABLE_KEY.trim()
+    : ((process.env.SUPABASE_ANON_KEY && process.env.SUPABASE_ANON_KEY.trim() !== '') ? process.env.SUPABASE_ANON_KEY.trim() : null);
+  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY.trim() !== '')
+    ? process.env.SUPABASE_SERVICE_ROLE_KEY.trim()
+    : anonKey;
+
+  const isConfigured = Boolean(url && anonKey);
+  const client = isConfigured
+    ? createClient(url, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      })
+    : null;
+
+  return { url, anonKey, isConfigured, client };
+}
+
+// Server-Side Authentication Middleware (Validates JWT Bearer Token with Supabase Auth)
+async function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required. Missing or malformed Bearer token.'
+    });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const { isConfigured, client } = getSupabaseServerClient();
+
+  if (!isConfigured || !client) {
+    return res.status(503).json({
+      success: false,
+      error: 'Supabase authentication is not configured on the server. Please set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.'
+    });
+  }
+
+  try {
+    const { data: { user }, error } = await client.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: ' + (error ? error.message : 'Invalid or expired session.')
+      });
+    }
+    req.user = user;
+    req.supabaseToken = token;
+    next();
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Token verification failure - ' + err.message
+    });
+  }
+}
 
 // Server-side OTP & Rate Limiting Stores
 const otpStore = new Map();
@@ -32,6 +94,8 @@ app.get(['/health', '/api/health'], (req, res) => {
     ? 'OpenAI ChatGPT'
     : (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '' ? 'Google Gemini' : 'Verified Offline Agro Engine');
 
+  const { isConfigured: supabaseConfigured } = getSupabaseServerClient();
+
   res.json({
     status: 'healthy',
     uptime: process.uptime(),
@@ -40,8 +104,163 @@ app.get(['/health', '/api/health'], (req, res) => {
     activeAiProvider: activeAi,
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== ''),
     openaiConfigured: Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim() !== ''),
-    smsGatewayConfigured: Boolean(process.env.FAST2SMS_API_KEY || process.env.TWILIO_ACCOUNT_SID)
+    smsGatewayConfigured: Boolean(process.env.FAST2SMS_API_KEY || process.env.TWILIO_ACCOUNT_SID),
+    supabaseConfigured
   });
+});
+
+// -------------------------------------------------------------
+// Supabase Authentication & Profile Endpoints
+// -------------------------------------------------------------
+
+// GET /api/auth/config: Exposes client-safe Supabase configuration (Publishable/Anon key only)
+app.get('/api/auth/config', (req, res) => {
+  const { url, anonKey, isConfigured } = getSupabaseServerClient();
+  res.json({
+    configured: isConfigured,
+    supabaseUrl: url,
+    supabasePublishableKey: anonKey
+  });
+});
+
+// POST /api/auth/config: Save & test Supabase project credentials
+app.post('/api/auth/config', async (req, res) => {
+  try {
+    const { supabaseUrl, supabasePublishableKey } = req.body;
+    if (!supabaseUrl || !supabasePublishableKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'Both Project URL and Publishable/Anon Key are required.'
+      });
+    }
+
+    const cleanUrl = supabaseUrl.trim().replace(/\/+$/, '');
+    const cleanKey = supabasePublishableKey.trim();
+
+    if (!cleanUrl.startsWith('https://')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Supabase URL must start with https:// (e.g. https://your-project.supabase.co).'
+      });
+    }
+
+    // Test client initialization and basic ping
+    const testClient = createClient(cleanUrl, cleanKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    const { error: pingErr } = await testClient.auth.getSession();
+    if (pingErr) {
+      return res.status(400).json({
+        success: false,
+        message: 'Could not connect to Supabase: ' + pingErr.message
+      });
+    }
+
+    process.env.SUPABASE_URL = cleanUrl;
+    process.env.SUPABASE_PUBLISHABLE_KEY = cleanKey;
+
+    try {
+      const envPath = path.join(__dirname, '.env');
+      let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+      const pairs = [
+        ['SUPABASE_URL', cleanUrl],
+        ['SUPABASE_PUBLISHABLE_KEY', cleanKey]
+      ];
+      pairs.forEach(([k, v]) => {
+        const re = new RegExp(`${k}=.*`);
+        if (re.test(envContent)) envContent = envContent.replace(re, `${k}=${v}`);
+        else envContent += `\n${k}=${v}`;
+      });
+      fs.writeFileSync(envPath, envContent, 'utf8');
+    } catch (saveErr) {
+      console.warn('Could not write to .env:', saveErr.message);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Supabase configuration saved and verified successfully!',
+      supabaseUrl: cleanUrl
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed configuring Supabase: ' + err.message
+    });
+  }
+});
+
+// GET /api/user/profile: Fetch server-validated user profile from public.profiles
+app.get('/api/user/profile', requireAuth, async (req, res) => {
+  try {
+    const { client } = getSupabaseServerClient();
+    const { data, error } = await client
+      .from('profiles')
+      .select('*')
+      .eq('id', req.user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[SUPABASE] Profile fetch notice:', error.message);
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        createdAt: req.user.created_at,
+        lastSignInAt: req.user.last_sign_in_at
+      },
+      profile: data || {
+        id: req.user.id,
+        email: req.user.email,
+        full_name: req.user.user_metadata?.full_name || '',
+        phone: '',
+        location: '',
+        primary_crop: '',
+        landholding_acres: null
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/user/profile: Update user profile in public.profiles table (Server validated)
+app.put('/api/user/profile', requireAuth, async (req, res) => {
+  try {
+    const { full_name, phone, location, primary_crop, landholding_acres } = req.body;
+    const { client } = getSupabaseServerClient();
+
+    const updates = {
+      id: req.user.id,
+      email: req.user.email,
+      full_name: full_name || null,
+      phone: phone || null,
+      location: location || null,
+      primary_crop: primary_crop || null,
+      landholding_acres: landholding_acres ? parseFloat(landholding_acres) : null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await client
+      .from('profiles')
+      .upsert(updates)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Farmer profile updated successfully in Supabase Database!',
+      profile: data
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Helper: Dispatch SMS via Fast2SMS, Twilio, or Secure Server Log

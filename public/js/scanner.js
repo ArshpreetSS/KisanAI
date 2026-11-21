@@ -72,9 +72,13 @@ window.ScannerModule = (function () {
         compressedBase64 = await compressImage(imageBase64);
       }
 
+      const headers = { 'Content-Type': 'application/json' };
+      const authToken = window.AuthModule?.getSession()?.access_token;
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
       const response = await fetch('/api/scan-analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           imageBase64: compressedBase64,
           cropHint: cropHint || 'Crop',

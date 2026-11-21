@@ -611,6 +611,7 @@ window.KisanApp = (function () {
       btn.addEventListener('click', () => setLanguage(btn.dataset.lang));
     });
 
+    window.AuthModule?.init();
     window.TelemetryModule?.init();
     window.ScannerModule?.init();
     window.SupportModule?.init();

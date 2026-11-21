@@ -183,6 +183,37 @@ body {
   transform: translateY(-2px);
 }
 
+/* Supabase 6-Digit Email OTP Box (Optimized for 6 Inputs) */
+.auth-otp-box {
+  width: 100%;
+  max-width: 3.25rem;
+  height: 3.5rem;
+  text-align: center;
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  color: #0f172a;
+  background-color: #ffffff;
+  border: 2px solid #cbd5e1;
+  border-radius: 0.95rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.auth-otp-box:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.25), 0 4px 12px rgba(22, 163, 74, 0.15);
+  transform: translateY(-2px);
+}
+@media (max-width: 480px) {
+  .auth-otp-box {
+    max-width: 2.65rem;
+    height: 2.9rem;
+    font-size: 1.25rem;
+    border-radius: 0.75rem;
+  }
+}
+
 /* Chat Speech Bubbles */
 .chat-bubble-user {
   background: linear-gradient(135deg, #16a34a, #15803d);

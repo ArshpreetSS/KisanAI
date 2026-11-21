@@ -308,9 +308,13 @@ window.ChatbotModule = (function () {
     };
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const authToken = window.AuthModule?.getSession()?.access_token;
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           message: clean,
           language: detectedLang,
