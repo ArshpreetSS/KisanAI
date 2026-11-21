@@ -1,0 +1,21 @@
+{
+  "name": "Kisan AI — Precision Agriculture Platform",
+  "short_name": "Kisan AI",
+  "description": "Precision Agriculture Intelligence for North Indian Farmers: Agromet Telemetry, Crop Pathology Scanner, Helplines & Multilingual Voice AI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#064e3b",
+  "theme_color": "#15803d",
+  "icons": [
+    {
+      "src": "/images/wheat.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/wheat.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
