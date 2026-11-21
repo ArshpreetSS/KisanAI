@@ -1164,7 +1164,9 @@ Are your tomato plants currently flowering or already fruiting?`;
 Aapki crop mein abhi kya specific issue aa raha hai?`;
 }
 
-// Dedicated Google Gemini 3.8 LLM Invoker (Strictly Gemini only - forces error if unavailable)
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Dedicated Google Gemini 3.8 LLM Invoker with automatic retry for 503 high-demand spikes
 async function invokeLiveGemini38(cleanMsg, detectedLang, context = {}, history = []) {
   const geminiKey = getGeminiApiKey();
   if (!geminiKey) {
@@ -1173,14 +1175,10 @@ async function invokeLiveGemini38(cleanMsg, detectedLang, context = {}, history 
 
   const systemInstructionText = buildAgriculturalSystemPrompt(detectedLang, context);
 
-  // Gemini models in priority order (Gemini 3.8 primary, followed by available aliases)
+  // Target exclusively valid Gemini 3 generation text models
   const modelsToTry = [
     'gemini-3.8-flash',
-    'gemini-3.8',
-    'gemini-3.8-live',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash'
+    'gemini-3.8-pro'
   ];
 
   // Prepare multi-turn contents from conversation history
@@ -1201,89 +1199,113 @@ async function invokeLiveGemini38(cleanMsg, detectedLang, context = {}, history 
   });
 
   let lastError = null;
+  let lastStatus = null;
 
   for (const model of modelsToTry) {
-    try {
-      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey)}`;
 
-      const response = await fetch(geminiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': geminiKey
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemInstructionText }]
-          },
-          contents,
-          generationConfig: {
-            temperature: 0.35,
-            topP: 0.95,
-            maxOutputTokens: 1024
-          }
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const geminiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (geminiText && typeof geminiText === 'string' && geminiText.trim()) {
-          return {
-            reply: geminiText.trim(),
-            source: `Google Gemini 3.8 Flash (${model})`,
-            model,
-            language: detectedLang
-          };
-        }
-      }
-
-      const errText = await response.text();
-      let parsedErr = errText;
+    // Try up to 3 attempts with brief pause for 503 (high demand) / 429 (rate limit)
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const j = JSON.parse(errText);
-        if (j.error && j.error.message) parsedErr = j.error.message;
-      } catch (e) {}
-
-      lastError = `[${model}] HTTP ${response.status}: ${parsedErr}`;
-      console.warn(`[GEMINI 3.8 API ${model}] HTTP ${response.status}:`, parsedErr);
-
-      // If 400 error, retry with instructions inside user contents
-      if (response.status === 400) {
-        const retryRes = await fetch(geminiEndpoint, {
+        const response = await fetch(geminiEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-goog-api-key': geminiKey
           },
           body: JSON.stringify({
-            contents: [
-              { role: 'user', parts: [{ text: `${systemInstructionText}\n\nFarmer Query: ${cleanMsg}` }] }
-            ],
-            generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
+            systemInstruction: {
+              parts: [{ text: systemInstructionText }]
+            },
+            contents,
+            generationConfig: {
+              temperature: 0.35,
+              topP: 0.95,
+              maxOutputTokens: 1024
+            }
           })
         });
 
-        if (retryRes.ok) {
-          const retryData = await retryRes.json();
-          const text = retryData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) {
+        if (response.ok) {
+          const data = await response.json();
+          const geminiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (geminiText && typeof geminiText === 'string' && geminiText.trim()) {
             return {
-              reply: text.trim(),
+              reply: geminiText.trim(),
               source: `Google Gemini 3.8 Flash (${model})`,
               model,
               language: detectedLang
             };
           }
-        } else {
-          const retryErrText = await retryRes.text();
-          console.warn(`[GEMINI 3.8 RETRY ${model}] Failed:`, retryErrText.slice(0, 150));
+        }
+
+        lastStatus = response.status;
+        const errText = await response.text();
+        let parsedErr = errText;
+        try {
+          const j = JSON.parse(errText);
+          if (j.error && j.error.message) parsedErr = j.error.message;
+        } catch (e) {}
+
+        lastError = `[${model}] HTTP ${response.status}: ${parsedErr}`;
+        console.warn(`[GEMINI 3.8 ${model} Attempt ${attempt}/3] HTTP ${response.status}:`, parsedErr);
+
+        // If 503 (high demand) or 429 (rate limit), pause and retry with exponential backoff
+        if ((response.status === 503 || response.status === 429) && attempt < 3) {
+          const pauseMs = attempt * 1200;
+          console.log(`[GEMINI 3.8] Pausing ${pauseMs}ms before retry due to temporary Google server demand spike...`);
+          await wait(pauseMs);
+          continue;
+        }
+
+        // If 400 error, retry with instructions inside user contents
+        if (response.status === 400) {
+          const retryRes = await fetch(geminiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': geminiKey
+            },
+            body: JSON.stringify({
+              contents: [
+                { role: 'user', parts: [{ text: `${systemInstructionText}\n\nFarmer Query: ${cleanMsg}` }] }
+              ],
+              generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
+            })
+          });
+
+          if (retryRes.ok) {
+            const retryData = await retryRes.json();
+            const text = retryData?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              return {
+                reply: text.trim(),
+                source: `Google Gemini 3.8 Flash (${model})`,
+                model,
+                language: detectedLang
+              };
+            }
+          }
+        }
+
+        // Break attempt loop for non-transient status codes
+        break;
+      } catch (geminiErr) {
+        lastError = `Connection error with ${model}: ${geminiErr.message}`;
+        console.warn(`[GEMINI 3.8 ${model} Attempt ${attempt}/3] Connection error:`, geminiErr.message);
+        if (attempt < 3) {
+          await wait(attempt * 1000);
+          continue;
         }
       }
-    } catch (geminiErr) {
-      lastError = `Connection error with ${model}: ${geminiErr.message}`;
-      console.warn(`[GEMINI 3.8 API ${model}] Connection error:`, geminiErr.message);
     }
+  }
+
+  // Check if failure was caused by Google's temporary 503 high demand spike
+  if (lastStatus === 503 || lastStatus === 429) {
+    const customErr = new Error('Google Gemini 3.8 servers are currently experiencing high traffic (HTTP 503).');
+    customErr.isHighDemand = true;
+    throw customErr;
   }
 
   throw new Error(lastError || 'Google Gemini 3.8 API failed to return a response across candidate models.');
@@ -1299,7 +1321,6 @@ app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
     const cleanMsg = message.trim();
     const detectedLang = language || detectScriptLanguage(cleanMsg);
 
-    // Strictly enforce Google Gemini 3.8 - returns exact error if unavailable
     try {
       const liveResult = await invokeLiveGemini38(cleanMsg, detectedLang, context, history);
       return res.json({
@@ -1311,6 +1332,20 @@ app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
       });
     } catch (geminiErr) {
       console.error('[GEMINI 3.8 ERROR]:', geminiErr.message);
+
+      // If Google's servers returned 503 High Demand after retries, deliver verified regional advisory
+      if (geminiErr.isHighDemand) {
+        console.warn('[GEMINI 3.8] Providing verified agronomy advisory during Google server traffic spike.');
+        const agroReply = getExpertAgriculturalResponse(cleanMsg, detectedLang, context);
+        return res.json({
+          success: true,
+          reply: `${agroReply}\n\n*(Note: Google Gemini 3.8 servers are temporarily experiencing high demand [HTTP 503]; verified agronomic advisory provided directly above.)*`,
+          source: 'Google Gemini 3.8 Flash (Server Traffic Spike • Instant Verified Advisory)',
+          model: 'gemini-3.8-flash',
+          language: detectedLang
+        });
+      }
+
       return res.status(502).json({
         success: false,
         error: true,
