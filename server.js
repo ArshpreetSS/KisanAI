@@ -546,88 +546,11 @@ app.get('/api/config/sms', (req, res) => {
   });
 });
 
-app.post('/api/config/sms', async (req, res) => {
-  try {
-    const { provider, fast2SmsKey, twilioSid, twilioToken, twilioPhone, testPhone } = req.body;
-
-    const envPath = path.join(__dirname, '.env');
-    let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
-
-    if (provider === 'simulation') {
-      process.env.FAST2SMS_API_KEY = '';
-      process.env.TWILIO_ACCOUNT_SID = '';
-      process.env.TWILIO_AUTH_TOKEN = '';
-      process.env.TWILIO_PHONE_NUMBER = '';
-      return res.json({ success: true, message: 'Switched to Secure Server Simulation Log.', provider: 'simulation' });
-    }
-
-    if (provider === 'fast2sms') {
-      if (!fast2SmsKey || typeof fast2SmsKey !== 'string' || fast2SmsKey.trim() === '') {
-        return res.status(400).json({ success: false, message: 'Please provide a valid Fast2SMS API Key.' });
-      }
-      const cleanKey = fast2SmsKey.trim();
-      process.env.FAST2SMS_API_KEY = cleanKey;
-
-      if (/FAST2SMS_API_KEY=.*/.test(envContent)) {
-        envContent = envContent.replace(/FAST2SMS_API_KEY=.*/, `FAST2SMS_API_KEY=${cleanKey}`);
-      } else {
-        envContent += `\nFAST2SMS_API_KEY=${cleanKey}`;
-      }
-      fs.writeFileSync(envPath, envContent, 'utf8');
-
-      if (testPhone && /^[6-9]\d{9}$/.test(testPhone.trim())) {
-        const testRes = await dispatchAlertSms(testPhone.trim(), 'Fast2SMS gateway verified! Kisan AI SMS alerts & OTPs are now active on your farm.');
-        return res.json({
-          success: true,
-          message: `Fast2SMS API Key saved! Live verification test SMS sent to +91-${testPhone.trim()}.`,
-          provider: 'fast2sms',
-          testResult: testRes
-        });
-      }
-
-      return res.json({ success: true, message: 'Fast2SMS API Key saved successfully!', provider: 'fast2sms' });
-    }
-
-    if (provider === 'twilio') {
-      if (!twilioSid || !twilioToken || !twilioPhone) {
-        return res.status(400).json({ success: false, message: 'Twilio Account SID, Auth Token, and Phone Number are all required.' });
-      }
-
-      process.env.TWILIO_ACCOUNT_SID = twilioSid.trim();
-      process.env.TWILIO_AUTH_TOKEN = twilioToken.trim();
-      process.env.TWILIO_PHONE_NUMBER = twilioPhone.trim();
-
-      const linesToUpdate = [
-        ['TWILIO_ACCOUNT_SID', twilioSid.trim()],
-        ['TWILIO_AUTH_TOKEN', twilioToken.trim()],
-        ['TWILIO_PHONE_NUMBER', twilioPhone.trim()]
-      ];
-
-      linesToUpdate.forEach(([k, v]) => {
-        const re = new RegExp(`${k}=.*`);
-        if (re.test(envContent)) envContent = envContent.replace(re, `${k}=${v}`);
-        else envContent += `\n${k}=${v}`;
-      });
-      fs.writeFileSync(envPath, envContent, 'utf8');
-
-      if (testPhone) {
-        const testRes = await dispatchAlertSms(testPhone.trim(), 'Twilio SMS Gateway verified! Kisan AI alerts & OTPs are now live on your phone.');
-        return res.json({
-          success: true,
-          message: `Twilio credentials saved! Live test SMS dispatched to ${testPhone.trim()}.`,
-          provider: 'twilio',
-          testResult: testRes
-        });
-      }
-
-      return res.json({ success: true, message: 'Twilio Gateway credentials saved successfully!', provider: 'twilio' });
-    }
-
-    return res.status(400).json({ success: false, message: 'Unknown SMS provider requested.' });
-  } catch (err) {
-    console.error('Error configuring SMS gateway:', err);
-    return res.status(500).json({ success: false, message: 'Internal server error while configuring SMS gateway.' });
-  }
+app.post('/api/config/sms', (req, res) => {
+  res.json({
+    success: true,
+    message: 'SMS Gateway is securely managed via environment variables (FAST2SMS_API_KEY, TWILIO_ACCOUNT_SID).'
+  });
 });
 
 app.post('/api/alerts/dispatch-sms', async (req, res) => {
@@ -665,82 +588,11 @@ app.get('/api/config/ai', (req, res) => {
   });
 });
 
-app.post('/api/config/ai', async (req, res) => {
-  try {
-    const { provider, apiKey, model } = req.body;
-
-    if (provider === 'offline') {
-      process.env.GEMINI_API_KEY = '';
-      process.env.OPENAI_API_KEY = '';
-      console.log('[AI CONFIG] Switched to PAU/ICAR Offline Agro-Advisory Engine.');
-      return res.json({
-        success: true,
-        message: 'Switched to PAU / ICAR Verified Offline Agro-Advisory Engine.',
-        provider: 'offline'
-      });
-    }
-
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '') {
-      return res.status(400).json({ success: false, message: 'Please provide a valid API key string.' });
-    }
-
-    const cleanKey = apiKey.trim();
-
-    if (provider === 'openai') {
-      // Test key against OpenAI models endpoint
-      const testRes = await fetch('https://api.openai.com/v1/models', {
-        headers: { 'Authorization': `Bearer ${cleanKey}` }
-      });
-      if (!testRes.ok) {
-        return res.status(400).json({ success: false, message: 'Invalid OpenAI API key. Authentication failed.' });
-      }
-      process.env.OPENAI_API_KEY = cleanKey;
-      console.log('[AI CONFIG] OpenAI API key configured and verified.');
-    } else {
-      // Test key against Google Gemini endpoint
-      const testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cleanKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }] })
-      });
-      if (!testRes.ok) {
-        return res.status(400).json({ success: false, message: 'Invalid Google Gemini API key. Verification failed.' });
-      }
-      process.env.GEMINI_API_KEY = cleanKey;
-      console.log('[AI CONFIG] Google Gemini API key configured and verified.');
-    }
-
-    // Persist to .env file
-    try {
-      const envPath = path.join(__dirname, '.env');
-      let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
-      if (provider === 'openai') {
-        if (/OPENAI_API_KEY=.*/.test(envContent)) {
-          envContent = envContent.replace(/OPENAI_API_KEY=.*/, `OPENAI_API_KEY=${cleanKey}`);
-        } else {
-          envContent += `\nOPENAI_API_KEY=${cleanKey}`;
-        }
-      } else {
-        if (/GEMINI_API_KEY=.*/.test(envContent)) {
-          envContent = envContent.replace(/GEMINI_API_KEY=.*/, `GEMINI_API_KEY=${cleanKey}`);
-        } else {
-          envContent += `\nGEMINI_API_KEY=${cleanKey}`;
-        }
-      }
-      fs.writeFileSync(envPath, envContent, 'utf8');
-    } catch (saveErr) {
-      console.warn('Could not save to .env file:', saveErr.message);
-    }
-
-    return res.json({
-      success: true,
-      message: `${provider === 'openai' ? 'OpenAI ChatGPT' : 'Google Gemini'} connected and verified successfully!`,
-      provider
-    });
-  } catch (err) {
-    console.error('Error configuring AI key:', err);
-    return res.status(500).json({ success: false, message: 'Error verifying API key.' });
-  }
+app.post('/api/config/ai', (req, res) => {
+  res.json({
+    success: true,
+    message: 'AI Configuration is securely managed via environment variables (GEMINI_API_KEY).'
+  });
 });
 
 // -------------------------------------------------------------

@@ -283,296 +283,37 @@ window.KisanApp = (function () {
     }
   }
 
-  function setupSmsSettingsModal() {
-    const modal = document.getElementById('sms-settings-modal');
-    const openBtn = document.getElementById('open-sms-settings-btn');
-    const closeX = document.getElementById('close-sms-modal-x');
-    const closeBtn = document.getElementById('close-sms-modal-btn');
-    const btnFast2Sms = document.getElementById('select-sms-fast2sms');
-    const btnTwilio = document.getElementById('select-sms-twilio');
-    const fast2smsBlock = document.getElementById('fast2sms-form-block');
-    const twilioBlock = document.getElementById('twilio-form-block');
-    const keyInput = document.getElementById('fast2sms-key-input');
-    const twilioSid = document.getElementById('twilio-sid-input');
-    const twilioToken = document.getElementById('twilio-token-input');
-    const twilioPhone = document.getElementById('twilio-phone-input');
-    const testPhoneInput = document.getElementById('sms-test-phone');
-    const saveBtn = document.getElementById('save-sms-config-btn');
-    const saveText = document.getElementById('save-sms-btn-text');
-    const useSimBtn = document.getElementById('use-simulation-sms-btn');
+  // Automated Gateway SMS Dispatch from Alert Banner
+  function setupAlertSmsDispatch() {
     const sendLiveAlertBtn = document.getElementById('send-live-gateway-alert-btn');
+    if (!sendLiveAlertBtn) return;
 
-    function openModal() {
-      if (modal) modal.classList.remove('hidden');
-      checkSmsStatus();
-    }
-    function closeModal() {
-      if (modal) modal.classList.add('hidden');
-    }
+    sendLiveAlertBtn.addEventListener('click', async () => {
+      const farmer = window.ChatbotModule?.getFarmer();
+      const phone = farmer?.phone || (document.getElementById('reg-phone')?.value) || '9876543210';
+      const tempText = document.getElementById('temp-alert-text')?.textContent || 'Critical temperature threshold exceeded!';
 
-    if (openBtn) openBtn.addEventListener('click', openModal);
-    if (closeX) closeX.addEventListener('click', closeModal);
-    if (closeBtn) closeBtn.addEventListener('click', closeModal);
-    if (modal) {
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeModal();
-      });
-    }
+      sendLiveAlertBtn.disabled = true;
+      sendLiveAlertBtn.textContent = 'Dispatching...';
 
-    if (btnFast2Sms && btnTwilio) {
-      btnFast2Sms.addEventListener('click', () => {
-        selectedSmsProvider = 'fast2sms';
-        btnFast2Sms.className = 'sms-provider-btn p-3 rounded-2xl border-2 border-blue-600 bg-blue-50/50 text-left transition flex items-center gap-2.5';
-        btnTwilio.className = 'sms-provider-btn p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-left transition flex items-center gap-2.5';
-        if (fast2smsBlock) fast2smsBlock.classList.remove('hidden');
-        if (twilioBlock) twilioBlock.classList.add('hidden');
-      });
-
-      btnTwilio.addEventListener('click', () => {
-        selectedSmsProvider = 'twilio';
-        btnTwilio.className = 'sms-provider-btn p-3 rounded-2xl border-2 border-blue-600 bg-blue-50/50 text-left transition flex items-center gap-2.5';
-        btnFast2Sms.className = 'sms-provider-btn p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-left transition flex items-center gap-2.5';
-        if (fast2smsBlock) fast2smsBlock.classList.add('hidden');
-        if (twilioBlock) twilioBlock.classList.remove('hidden');
-      });
-    }
-
-    if (useSimBtn) {
-      useSimBtn.addEventListener('click', async () => {
-        try {
-          const res = await fetch('/api/config/sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ provider: 'simulation' })
-          });
-          const d = await res.json();
-          showToast('Sandbox Active', 'Switched to secure server simulation log mode.', 'info');
-          checkSmsStatus();
-          closeModal();
-        } catch (e) {
-          showToast('Error', 'Could not switch mode', 'warn');
-        }
-      });
-    }
-
-    if (saveBtn) {
-      saveBtn.addEventListener('click', async () => {
-        const testPhone = testPhoneInput ? testPhoneInput.value.trim() : '';
-
-        const payload = {
-          provider: selectedSmsProvider,
-          testPhone
-        };
-
-        if (selectedSmsProvider === 'fast2sms') {
-          payload.fast2SmsKey = keyInput ? keyInput.value.trim() : '';
-          if (!payload.fast2SmsKey) {
-            showToast('API Key Required', 'Please enter your Fast2SMS API Key.', 'warn');
-            return;
-          }
-        } else {
-          payload.twilioSid = twilioSid ? twilioSid.value.trim() : '';
-          payload.twilioToken = twilioToken ? twilioToken.value.trim() : '';
-          payload.twilioPhone = twilioPhone ? twilioPhone.value.trim() : '';
-          if (!payload.twilioSid || !payload.twilioToken || !payload.twilioPhone) {
-            showToast('Credentials Incomplete', 'Please fill in all Twilio credentials.', 'warn');
-            return;
-          }
-        }
-
-        saveBtn.disabled = true;
-        if (saveText) saveText.textContent = 'Testing & Saving...';
-
-        try {
-          const res = await fetch('/api/config/sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || 'Verification failed');
-
-          showToast('SMS Gateway Connected', data.message || 'SMS gateway saved successfully!', 'success');
-          checkSmsStatus();
-          setTimeout(closeModal, 800);
-        } catch (err) {
-          showToast('SMS Gateway Error', err.message || 'Could not verify SMS gateway credentials.', 'warn');
-        } finally {
-          saveBtn.disabled = false;
-          if (saveText) saveText.textContent = 'Test & Save SMS Gateway';
-        }
-      });
-    }
-
-    // Automated Gateway SMS Dispatch from Alert Banner
-    if (sendLiveAlertBtn) {
-      sendLiveAlertBtn.addEventListener('click', async () => {
-        const farmer = window.ChatbotModule?.getFarmer();
-        const phone = farmer?.phone || (document.getElementById('reg-phone')?.value) || '9876543210';
-        const tempText = document.getElementById('temp-alert-text')?.textContent || 'Critical temperature threshold exceeded!';
-
-        sendLiveAlertBtn.disabled = true;
-        sendLiveAlertBtn.textContent = 'Dispatching...';
-
-        try {
-          const res = await fetch('/api/alerts/dispatch-sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phone,
-              alertText: `${tempText} at ${window.TelemetryModule?.getState()?.locationName || 'Punjab Farm'}. Immediate protective measures advised.`
-            })
-          });
-          const data = await res.json();
-          showToast('Alert Dispatched', data.message || `SMS alert sent to +91-${phone}.`, 'success');
-        } catch (e) {
-          showToast('SMS Dispatch Issue', 'Server log simulation recorded.', 'info');
-        } finally {
-          sendLiveAlertBtn.disabled = false;
-          sendLiveAlertBtn.innerHTML = '<span>📡</span><span>Dispatch Gateway SMS</span>';
-        }
-      });
-    }
-  }
-
-  function setupAiSettingsModal() {
-    const modal = document.getElementById('ai-settings-modal');
-    const openBtn = document.getElementById('open-ai-settings-btn');
-    const chatBadge = document.getElementById('chat-ai-status-badge');
-    const closeX = document.getElementById('close-ai-modal-x');
-    const closeBtn = document.getElementById('close-ai-modal-btn');
-    const btnGemini = document.getElementById('select-provider-gemini');
-    const btnOpenai = document.getElementById('select-provider-openai');
-    const modelSelect = document.getElementById('ai-model-select');
-    const keyInput = document.getElementById('ai-key-input');
-    const toggleVisBtn = document.getElementById('toggle-key-visibility');
-    const saveBtn = document.getElementById('save-ai-config-btn');
-    const saveText = document.getElementById('save-ai-btn-text');
-    const linkContainer = document.getElementById('get-key-link-container');
-    const useOfflineBtn = document.getElementById('use-offline-btn');
-
-    function openModal() {
-      if (modal) modal.classList.remove('hidden');
-      checkAiStatus();
-    }
-    function closeModal() {
-      if (modal) modal.classList.add('hidden');
-    }
-
-    if (openBtn) openBtn.addEventListener('click', openModal);
-    if (chatBadge) chatBadge.addEventListener('click', openModal);
-    if (closeX) closeX.addEventListener('click', closeModal);
-    if (closeBtn) closeBtn.addEventListener('click', closeModal);
-    if (modal) {
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeModal();
-      });
-    }
-
-    if (btnGemini && btnOpenai) {
-      btnGemini.addEventListener('click', () => {
-        selectedAiProvider = 'gemini';
-        btnGemini.className = 'provider-select-btn p-3 rounded-2xl border-2 border-emerald-600 bg-emerald-50/50 text-left transition flex items-center gap-2.5';
-        btnOpenai.className = 'provider-select-btn p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-left transition flex items-center gap-2.5';
-        
-        if (modelSelect) {
-          modelSelect.innerHTML = `
-            <option value="gemini-2.5-flash">gemini-2.5-flash (Fast, Highly Accurate)</option>
-            <option value="gemini-1.5-flash">gemini-1.5-flash (Google Recommended)</option>
-            <option value="gemini-2.0-flash">gemini-2.0-flash (General Availability)</option>
-          `;
-        }
-        if (keyInput) keyInput.placeholder = 'Paste your Google Gemini API Key (e.g. AIzaSy...)';
-        if (linkContainer) {
-          linkContainer.innerHTML = 'Get free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-emerald-700 font-bold underline">Google AI Studio ↗</a>';
-        }
-      });
-
-      btnOpenai.addEventListener('click', () => {
-        selectedAiProvider = 'openai';
-        btnOpenai.className = 'provider-select-btn p-3 rounded-2xl border-2 border-emerald-600 bg-emerald-50/50 text-left transition flex items-center gap-2.5';
-        btnGemini.className = 'provider-select-btn p-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-left transition flex items-center gap-2.5';
-        
-        if (modelSelect) {
-          modelSelect.innerHTML = `
-            <option value="gpt-4o-mini">gpt-4o-mini (Recommended, Fast & Cost-effective)</option>
-            <option value="gpt-4o">gpt-4o (High Intelligence Flagship)</option>
-          `;
-        }
-        if (keyInput) keyInput.placeholder = 'Paste your OpenAI API Key (e.g. sk-...)';
-        if (linkContainer) {
-          linkContainer.innerHTML = 'Get key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="text-emerald-700 font-bold underline">OpenAI Platform ↗</a>';
-        }
-      });
-    }
-
-    if (toggleVisBtn && keyInput) {
-      toggleVisBtn.addEventListener('click', () => {
-        if (keyInput.type === 'password') {
-          keyInput.type = 'text';
-          toggleVisBtn.textContent = 'Hide';
-        } else {
-          keyInput.type = 'password';
-          toggleVisBtn.textContent = 'Show';
-        }
-      });
-    }
-
-    if (useOfflineBtn) {
-      useOfflineBtn.addEventListener('click', async () => {
-        try {
-          const res = await fetch('/api/config/ai', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ provider: 'offline', apiKey: 'offline' })
-          });
-          const d = await res.json();
-          showToast('Switched to Offline Mode', 'PAU / ICAR Verified Offline Agro-Advisory Engine is now active.', 'info');
-          checkAiStatus();
-          closeModal();
-        } catch (e) {
-          showToast('Error', 'Could not switch mode', 'warn');
-        }
-      });
-    }
-
-    if (saveBtn) {
-      saveBtn.addEventListener('click', async () => {
-        const apiKey = keyInput ? keyInput.value.trim() : '';
-        if (!apiKey) {
-          showToast('API Key Required', 'Please paste your API key to test and save.', 'warn');
-          return;
-        }
-
-        saveBtn.disabled = true;
-        if (saveText) saveText.textContent = 'Verifying API Key...';
-
-        try {
-          const res = await fetch('/api/config/ai', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider: selectedAiProvider,
-              apiKey,
-              model: modelSelect ? modelSelect.value : undefined
-            })
-          });
-
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || 'API key verification failed');
-
-          showToast('AI Provider Connected', data.message || 'API Key verified successfully!', 'success');
-          if (keyInput) keyInput.value = '';
-          checkAiStatus();
-          setTimeout(closeModal, 800);
-        } catch (err) {
-          showToast('Verification Failed', err.message || 'Invalid API Key. Please check and retry.', 'warn');
-        } finally {
-          saveBtn.disabled = false;
-          if (saveText) saveText.textContent = 'Test & Save API Key';
-        }
-      });
-    }
+      try {
+        const res = await fetch('/api/alerts/dispatch-sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone,
+            alertText: `${tempText} at ${window.TelemetryModule?.getState()?.locationName || 'Punjab Farm'}. Immediate protective measures advised.`
+          })
+        });
+        const data = await res.json();
+        showToast('Alert Dispatched', data.message || `SMS alert sent to +91-${phone}.`, 'success');
+      } catch (e) {
+        showToast('SMS Dispatch Issue', 'Server log simulation recorded.', 'info');
+      } finally {
+        sendLiveAlertBtn.disabled = false;
+        sendLiveAlertBtn.innerHTML = '<span>📡</span><span>Dispatch Gateway SMS</span>';
+      }
+    });
   }
 
   async function checkSystemHealth() {
@@ -618,8 +359,7 @@ window.KisanApp = (function () {
     window.ChatbotModule?.init();
 
     checkSystemHealth();
-    setupAiSettingsModal();
-    setupSmsSettingsModal();
+    setupAlertSmsDispatch();
     checkSmsStatus();
     checkAiStatus();
   }
