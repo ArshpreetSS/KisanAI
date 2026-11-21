@@ -512,9 +512,9 @@ window.ChatbotModule = (function () {
         };
       }
 
-      if (!res.ok || data.error || !data.reply) {
-        const errorReply = data?.reply || data?.message || getLocalizedErrorMessage(detectedLang);
-        const errorSource = data?.source || 'Google Gemini Service Notice';
+      if (!res.ok || data.error || (!data.reply && !data.response)) {
+        const errorReply = data?.reply || data?.response || data?.message || getLocalizedErrorMessage(detectedLang);
+        const errorSource = data?.source || 'AI Advisory Service Notice';
         state.chatHistory[pendingIdx] = {
           role: 'ai',
           isLoading: false,
@@ -527,9 +527,9 @@ window.ChatbotModule = (function () {
         return;
       }
 
-      const reply = data.reply;
-      const isFallback = data.provider === 'openai' || data.fallbackTriggered;
-      const providerLabel = data.source || (isFallback ? `OpenAI (${data.model || 'gpt-6-sol'})` : `Google Gemini (${data.model || 'gemini-3.8-flash'})`);
+      const reply = data.reply || data.response;
+      const isFallback = data.provider === 'openai' || data.fallbackUsed || data.fallbackTriggered;
+      const providerLabel = data.source || (isFallback ? `OpenAI (${data.model || 'Dynamic Fallback'})` : `Google Gemini (${data.model || 'Dynamic Active'})`);
       const sourceBadge = `Kisan AI • ${providerLabel}`;
 
       state.chatHistory[pendingIdx] = {

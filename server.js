@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
+const modelManager = require('./services/modelManager');
 require('dotenv').config();
 
 const app = express();
@@ -174,6 +175,22 @@ app.get(['/health', '/api/health'], (req, res) => {
     smsGatewayConfigured: Boolean(process.env.FAST2SMS_API_KEY || process.env.TWILIO_ACCOUNT_SID),
     supabaseConfigured
   });
+});
+
+// Admin Diagnostics Endpoint for Dynamic AI Discovery & Multi-Provider Health
+app.get(['/api/ai/diagnostics', '/admin/ai-health'], async (req, res) => {
+  const geminiKey = getGeminiApiKey();
+  const openAIKey = getOpenAIApiKey();
+
+  if (geminiKey) {
+    await modelManager.discoverGeminiModels(geminiKey).catch(() => {});
+  }
+  if (openAIKey) {
+    await modelManager.discoverOpenAIModels(openAIKey).catch(() => {});
+  }
+
+  const diagnostics = modelManager.getDiagnosticsStatus(geminiKey, openAIKey);
+  res.json(diagnostics);
 });
 
 // -------------------------------------------------------------
@@ -1214,356 +1231,6 @@ Are your tomato plants currently flowering or already fruiting?`;
 Aapki crop mein abhi kya specific issue aa raha hai?`;
 }
 
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Categorize HTTP status codes for Gemini API responses
-function classifyGeminiError(status) {
-  if (status === 400) return 'CATEGORY_INVALID_REQUEST';
-  if (status === 401 || status === 403) return 'CATEGORY_AUTHENTICATION_ERROR';
-  if (status === 404) return 'CATEGORY_MODEL_NOT_FOUND';
-  if (status === 429) return 'CATEGORY_RATE_LIMIT_EXCEEDED';
-  if (status === 500 || status === 502 || status === 503 || status === 504) {
-    return 'CATEGORY_TEMPORARY_PROVIDER_OUTAGE';
-  }
-  return 'CATEGORY_UNKNOWN_PROVIDER_ERROR';
-}
-
-function isRetryableGeminiStatus(status) {
-  return status === 503 || status === 429 || status === 500 || status === 502 || status === 504;
-}
-
-function calculateBackoffWithJitter(attempt, retryAfterHeader = null) {
-  if (retryAfterHeader) {
-    const sec = parseInt(retryAfterHeader, 10);
-    if (!isNaN(sec) && sec > 0) {
-      return Math.min(4500, sec * 1000 + Math.floor(Math.random() * 300));
-    }
-  }
-  const base = 1000 * Math.pow(2, attempt - 1);
-  const jitter = Math.floor(Math.random() * 350) + 100;
-  return Math.min(4000, base + jitter);
-}
-
-// Robust Google Gemini LLM Invoker with automatic fallback and jittered exponential backoff
-async function invokeLiveGemini(cleanMsg, detectedLang, context = {}, history = [], correlationId = '') {
-  const reqId = correlationId || `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const geminiKey = getGeminiApiKey();
-  if (!geminiKey) {
-    const authErr = new Error('GEMINI_API_KEY environment variable is missing.');
-    authErr.status = 401;
-    authErr.category = 'CATEGORY_AUTHENTICATION_ERROR';
-    authErr.correlationId = reqId;
-    throw authErr;
-  }
-
-  const systemInstructionText = buildAgriculturalSystemPrompt(detectedLang, context);
-  const { primary, fallback, models } = getGeminiModels();
-
-  // Multi-turn conversation history (preserve up to 6 recent turns)
-  const contents = [];
-  if (Array.isArray(history) && history.length > 0) {
-    const validTurns = history.slice(-6).filter(t => t && t.text && typeof t.text === 'string' && t.text.trim());
-    for (const turn of validTurns) {
-      contents.push({
-        role: turn.role === 'model' || turn.role === 'ai' || turn.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: turn.text.trim() }]
-      });
-    }
-  }
-  contents.push({
-    role: 'user',
-    parts: [{ text: cleanMsg }]
-  });
-
-  let lastError = null;
-  let lastStatus = 500;
-  let lastCategory = 'CATEGORY_UNKNOWN_PROVIDER_ERROR';
-
-  for (let mIdx = 0; mIdx < models.length; mIdx++) {
-    const model = models[mIdx];
-    const maxAttempts = 2; // Up to 2 attempts per model to remain safely within serverless execution budgets
-
-    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(geminiKey)}`;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        // Enforce 10-second provider timeout so a stalled Google request never hangs Express
-        const fetchController = new AbortController();
-        const timeoutTimer = setTimeout(() => fetchController.abort(new Error('PROVIDER_TIMEOUT')), 10000);
-
-        let response;
-        try {
-          response = await fetch(geminiEndpoint, {
-            method: 'POST',
-            signal: fetchController.signal,
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': geminiKey
-            },
-            body: JSON.stringify({
-              systemInstruction: {
-                parts: [{ text: systemInstructionText }]
-              },
-              contents,
-              generationConfig: {
-                temperature: 0.35,
-                topP: 0.95,
-                maxOutputTokens: 1024
-              }
-            })
-          });
-        } finally {
-          clearTimeout(timeoutTimer);
-        }
-
-        if (response.ok) {
-          const data = await response.json();
-          const geminiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (geminiText && typeof geminiText === 'string' && geminiText.trim()) {
-            console.log(`[GEMINI API] [Req: ${reqId}] SUCCESS with model: ${model} (attempt ${attempt}/${maxAttempts})`);
-            return {
-              reply: geminiText.trim(),
-              source: `Google Gemini (${model})`,
-              model,
-              language: detectedLang,
-              correlationId: reqId
-            };
-          }
-        }
-
-        lastStatus = response.status;
-        lastCategory = classifyGeminiError(response.status);
-        const errText = await response.text();
-        let parsedErr = errText;
-        try {
-          const j = JSON.parse(errText);
-          if (j.error && j.error.message) parsedErr = j.error.message;
-        } catch (e) {}
-
-        lastError = `[${model}] HTTP ${response.status}: ${parsedErr}`;
-        console.warn(`[GEMINI API] [Req: ${reqId}] Model: ${model} | Attempt: ${attempt}/${maxAttempts} | Status: ${response.status} | Category: ${lastCategory} | Error: ${parsedErr}`);
-
-        // Permanent Auth / Permission error: abort immediately, do NOT retry any model
-        if (response.status === 401 || response.status === 403) {
-          const authErr = new Error(`Gemini API Authentication Error (HTTP ${response.status}): ${parsedErr}`);
-          authErr.status = response.status;
-          authErr.category = lastCategory;
-          authErr.correlationId = reqId;
-          throw authErr;
-        }
-
-        // Permanent 404 (Model Not Found): break attempt loop and switch to next model immediately
-        if (response.status === 404) {
-          console.warn(`[GEMINI API] [Req: ${reqId}] Model ${model} returned 404 Not Found. Skipping model without retrying.`);
-          break;
-        }
-
-        // 400 Bad Request: retry once with combined prompt if multi-turn failed, then break
-        if (response.status === 400) {
-          if (attempt === 1) {
-            try {
-              const retryController = new AbortController();
-              const retryTimer = setTimeout(() => retryController.abort(new Error('PROVIDER_TIMEOUT')), 8000);
-              let retry400;
-              try {
-                retry400 = await fetch(geminiEndpoint, {
-                  method: 'POST',
-                  signal: retryController.signal,
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'x-goog-api-key': geminiKey
-                  },
-                  body: JSON.stringify({
-                    contents: [
-                      { role: 'user', parts: [{ text: `${systemInstructionText}\n\nFarmer Query: ${cleanMsg}` }] }
-                    ],
-                    generationConfig: { temperature: 0.35, maxOutputTokens: 1024 }
-                  })
-                });
-              } finally {
-                clearTimeout(retryTimer);
-              }
-
-              if (retry400 && retry400.ok) {
-                const data400 = await retry400.json();
-                const text400 = data400?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text400) {
-                  return {
-                    reply: text400.trim(),
-                    source: `Google Gemini (${model})`,
-                    model,
-                    language: detectedLang,
-                    correlationId: reqId
-                  };
-                }
-              }
-            } catch (e400) {}
-          }
-          break;
-        }
-
-        // Transient errors: 503 (high demand), 429 (rate limit), 500/502/504
-        if (isRetryableGeminiStatus(response.status)) {
-          // If 503 (high demand) and another model is available, fast-failover to avoid user delay
-          if (response.status === 503 && mIdx < models.length - 1) {
-            console.log(`[GEMINI API] [Req: ${reqId}] Model ${model} is experiencing high demand (503). Fast-failing over to ${models[mIdx + 1]}...`);
-            break;
-          }
-          if (attempt < maxAttempts) {
-            const retryAfter = response.headers.get('retry-after');
-            const pauseMs = calculateBackoffWithJitter(attempt, retryAfter);
-            console.log(`[GEMINI API] [Req: ${reqId}] Transient ${response.status} on ${model}. Pausing ${pauseMs}ms with jitter before attempt ${attempt + 1}...`);
-            await wait(pauseMs);
-            continue;
-          }
-        }
-
-        // Exhausted attempts on this model; proceed to next model in loop
-        break;
-      } catch (connErr) {
-        if (connErr.category === 'CATEGORY_AUTHENTICATION_ERROR') throw connErr;
-
-        const isTimeout = connErr.name === 'AbortError' || connErr.message === 'PROVIDER_TIMEOUT';
-        lastError = isTimeout
-          ? `Provider timeout with ${model} after 10s`
-          : `Connection error with ${model}: ${connErr.message}`;
-        lastCategory = isTimeout ? 'CATEGORY_TEMPORARY_PROVIDER_OUTAGE' : 'CATEGORY_NETWORK_ERROR';
-        console.warn(`[GEMINI API] [Req: ${reqId}] ${lastError} on attempt ${attempt}`);
-
-        if (attempt < maxAttempts) {
-          const pauseMs = calculateBackoffWithJitter(attempt);
-          await wait(pauseMs);
-          continue;
-        }
-        break;
-      }
-    }
-  }
-
-  // All configured models were attempted and failed
-  const finalError = new Error(lastError || 'All configured Gemini models failed to return a response.');
-  finalError.status = lastStatus;
-  finalError.category = lastCategory;
-  finalError.correlationId = reqId;
-  finalError.model = models[0] || 'gemini-3.8-flash';
-  throw finalError;
-}
-
-// OpenAI Fallback Invoker using official OpenAI SDK Responses API
-async function invokeOpenAIFallback(cleanMsg, detectedLang, context = {}, history = [], correlationId = '') {
-  const reqId = correlationId || `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const openAIKey = getOpenAIApiKey();
-  if (!openAIKey) {
-    const err = new Error('OPENAI_API_KEY environment variable is missing.');
-    err.status = 401;
-    err.category = 'CATEGORY_AUTHENTICATION_ERROR';
-    err.correlationId = reqId;
-    err.provider = 'openai';
-    throw err;
-  }
-
-  const model = getOpenAIFallbackModel();
-  const systemInstructionText = buildAgriculturalSystemPrompt(detectedLang, context);
-  const client = getOpenAIClient();
-
-  const messages = [];
-  if (Array.isArray(history) && history.length > 0) {
-    const validTurns = history.slice(-6).filter(t => t && t.text && typeof t.text === 'string' && t.text.trim());
-    for (const turn of validTurns) {
-      messages.push({
-        role: turn.role === 'model' || turn.role === 'ai' || turn.role === 'assistant' ? 'assistant' : 'user',
-        content: turn.text.trim()
-      });
-    }
-  }
-  messages.push({
-    role: 'user',
-    content: cleanMsg
-  });
-
-  const startTime = Date.now();
-  console.log(`[AI FALLBACK] [Req: ${reqId}] Invoking OpenAI Fallback | Model: ${model} | Lang: ${detectedLang}`);
-
-  const timeoutMs = 25000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('PROVIDER_TIMEOUT')), timeoutMs);
-
-  try {
-    let replyText = '';
-    try {
-      // 1. Primary approach: OpenAI Responses API
-      const response = await client.responses.create({
-        model,
-        instructions: systemInstructionText,
-        input: messages
-      }, {
-        signal: controller.signal
-      });
-
-      replyText = response.output_text;
-      if (!replyText && response.output && Array.isArray(response.output)) {
-        for (const item of response.output) {
-          if (item.type === 'message' && Array.isArray(item.content)) {
-            for (const c of item.content) {
-              if (c.type === 'text' && c.text) {
-                replyText = c.text;
-                break;
-              }
-            }
-          }
-          if (replyText) break;
-        }
-      }
-    } catch (respErr) {
-      console.warn(`[AI FALLBACK] [Req: ${reqId}] Responses API notice (${respErr.message}). Falling back to Chat Completions format...`);
-      // 2. Chat Completions format fallback
-      const completionMessages = [
-        { role: 'system', content: systemInstructionText },
-        ...messages
-      ];
-      const chatRes = await client.chat.completions.create({
-        model,
-        messages: completionMessages,
-        temperature: 0.35,
-        max_tokens: 1024
-      }, {
-        signal: controller.signal
-      });
-      replyText = chatRes.choices?.[0]?.message?.content || '';
-    }
-
-    const duration = Date.now() - startTime;
-    if (replyText && typeof replyText === 'string' && replyText.trim()) {
-      console.log(`[AI FALLBACK] [Req: ${reqId}] SUCCESS with OpenAI (${model}) in ${duration}ms`);
-      return {
-        reply: replyText.trim(),
-        source: `OpenAI (${model})`,
-        model,
-        provider: 'openai',
-        language: detectedLang,
-        correlationId: reqId,
-        durationMs: duration
-      };
-    } else {
-      throw new Error(`OpenAI (${model}) returned empty output.`);
-    }
-  } catch (err) {
-    const duration = Date.now() - startTime;
-    const isTimeout = err.name === 'AbortError' || err.message === 'PROVIDER_TIMEOUT';
-    const errorMsg = isTimeout ? `OpenAI provider timeout after ${timeoutMs / 1000}s` : err.message;
-    const finalErr = new Error(errorMsg);
-    finalErr.status = err.status || (isTimeout ? 504 : 500);
-    finalErr.category = isTimeout ? 'CATEGORY_TEMPORARY_PROVIDER_OUTAGE' : 'CATEGORY_OPENAI_ERROR';
-    finalErr.correlationId = reqId;
-    finalErr.model = model;
-    finalErr.provider = 'openai';
-    finalErr.durationMs = duration;
-    throw finalErr;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 app.options(['/api/chat', '/.netlify/functions/gemini-chat'], (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -1590,84 +1257,70 @@ app.post(['/api/chat', '/.netlify/functions/gemini-chat'], async (req, res) => {
 
     const cleanMsg = message.trim();
     const detectedLang = language || detectScriptLanguage(cleanMsg);
-
-    // 1. Primary AI Invocation: Google Gemini
-    let liveResult = null;
-    let geminiError = null;
-    const geminiStartTime = Date.now();
+    const systemInstruction = buildAgriculturalSystemPrompt(detectedLang, context);
+    const geminiKey = getGeminiApiKey();
+    const openAIKey = getOpenAIApiKey();
 
     try {
-      liveResult = await invokeLiveGemini(cleanMsg, detectedLang, context, history, correlationId);
-    } catch (gErr) {
-      geminiError = gErr;
-    }
-
-    // If Gemini succeeded, return immediately (OpenAI is NOT called)
-    if (liveResult && liveResult.reply) {
-      const geminiDurationMs = Date.now() - geminiStartTime;
-      console.log(`[AI ROUTER] [Req: ${correlationId}] Primary Provider: gemini | Fallback Provider: openai | Model: ${liveResult.model} | Success: true | Duration: ${geminiDurationMs}ms | Correlation ID: ${correlationId}`);
-      return res.json({
-        success: true,
-        reply: liveResult.reply,
-        source: liveResult.source || `Google Gemini (${liveResult.model})`,
-        model: liveResult.model,
-        provider: 'gemini',
-        language: liveResult.language || detectedLang,
-        correlationId: liveResult.correlationId,
-        durationMs: geminiDurationMs
+      const result = await modelManager.dispatchAgriculturalRequest({
+        userQuery: cleanMsg,
+        language: detectedLang,
+        systemInstruction,
+        history,
+        geminiKey,
+        openAIKey,
+        preferredGeminiModel: process.env.GEMINI_PRIMARY_MODEL,
+        preferredOpenAIModel: process.env.OPENAI_FALLBACK_MODEL,
+        correlationId,
+        overallTimeoutMs: 45000
       });
-    }
-
-    // 2. Gemini Failed: Log details and attempt Fallback to OpenAI API
-    const geminiDurationMs = Date.now() - geminiStartTime;
-    const geminiStatus = geminiError?.status || 500;
-    const geminiCategory = geminiError?.category || classifyGeminiError(geminiStatus);
-    const geminiModel = geminiError?.model || 'gemini-3.8-flash';
-
-    console.warn(`[AI ROUTER] [Req: ${correlationId}] Primary Provider: gemini | Fallback Provider: openai | Model: ${geminiModel} | Failure Status: ${geminiStatus} | Duration: ${geminiDurationMs}ms | Correlation ID: ${correlationId}`);
-
-    if (geminiStatus === 404 || geminiCategory === 'CATEGORY_MODEL_NOT_FOUND') {
-      console.error(`[AI ROUTER] [Req: ${correlationId}] CONFIGURATION ERROR: Invalid Gemini Model (${geminiModel}) returned HTTP 404. Falling back to OpenAI.`);
-    }
-
-    // 3. Fallback Attempt: OpenAI API (gpt-6-sol)
-    const openAIStartTime = Date.now();
-    try {
-      const openAIResult = await invokeOpenAIFallback(cleanMsg, detectedLang, context, history, correlationId);
-      const openAIDurationMs = Date.now() - openAIStartTime;
-
-      console.log(`[AI ROUTER] [Req: ${correlationId}] Primary: gemini (FAILED: ${geminiStatus}) | Fallback Provider: openai (SUCCESS) | Model: ${openAIResult.model} | Fallback Duration: ${openAIDurationMs}ms | Total Duration: ${Date.now() - geminiStartTime}ms | Correlation ID: ${correlationId}`);
 
       return res.json({
         success: true,
-        reply: openAIResult.reply,
-        source: openAIResult.source || `OpenAI (${openAIResult.model})`,
-        model: openAIResult.model,
-        provider: 'openai',
-        fallbackTriggered: true,
-        primaryProvider: 'gemini',
-        primaryModel: geminiModel,
-        primaryErrorStatus: geminiStatus,
-        language: openAIResult.language || detectedLang,
-        correlationId: openAIResult.correlationId,
-        durationMs: openAIDurationMs
+        reply: result.reply,
+        response: result.response,
+        provider: result.provider,
+        model: result.model,
+        source: result.source,
+        fallbackUsed: result.fallbackUsed,
+        attemptsCount: result.attemptsCount,
+        language: detectedLang,
+        correlationId: result.correlationId,
+        durationMs: result.durationMs
       });
-    } catch (openAIErr) {
-      const openAIDurationMs = Date.now() - openAIStartTime;
-      console.error(`[AI ROUTER] [Req: ${correlationId}] BOTH PROVIDERS FAILED | Primary Provider: gemini (${geminiStatus}: ${geminiError?.message}) | Fallback Provider: openai (${openAIErr?.status || 'ERROR'}: ${openAIErr?.message}) | Total Duration: ${Date.now() - geminiStartTime}ms | Correlation ID: ${correlationId}`);
+    } catch (dispatchErr) {
+      console.error(`[AI ROUTER ERROR] [Req: ${correlationId}]:`, dispatchErr.message);
 
-      // Both providers failed: return friendly temporary service unavailable message
+      const status = dispatchErr.status || 503;
+      const category = dispatchErr.category || 'CATEGORY_ALL_PROVIDERS_UNAVAILABLE';
+
+      if (category === 'CATEGORY_AUTHENTICATION_ERROR' || status === 401) {
+        return res.status(401).json({
+          success: false,
+          error: true,
+          status: 401,
+          category,
+          message: 'AI Provider authentication failed. Please configure a valid GEMINI_API_KEY or OPENAI_API_KEY in your environment variables.',
+          reply: '⚠️ **Kisan AI Authentication Notice**: AI provider credentials are missing or invalid. Please configure your `GEMINI_API_KEY` or `OPENAI_API_KEY` in environment variables.',
+          response: '⚠️ **Kisan AI Authentication Notice**: AI provider credentials are missing or invalid. Please configure your `GEMINI_API_KEY` or `OPENAI_API_KEY` in environment variables.',
+          source: 'Kisan AI Authentication Guard',
+          language: detectedLang,
+          correlationId
+        });
+      }
+
       return res.status(503).json({
         success: false,
         error: true,
         status: 503,
-        category: 'CATEGORY_ALL_PROVIDERS_UNAVAILABLE',
-        message: 'Both Google Gemini and OpenAI are temporarily unavailable.',
-        reply: '⚠️ **Agricultural Advisory Notice**: Both our primary (Gemini) and backup (OpenAI) advisory engines are temporarily unavailable or experiencing high demand. Please tap "Retry Question" below in a moment.',
-        source: 'Kisan AI Multi-Provider Engine (Temporary Service Unavailable)',
+        category,
+        message: 'All compatible models across Google Gemini and OpenAI are temporarily unavailable or busy.',
+        reply: '⚠️ **Agricultural Advisory Notice**: Our dynamic AI advisory network is temporarily experiencing high demand across available models. Please tap "Retry Question" below in a moment.',
+        response: '⚠️ **Agricultural Advisory Notice**: Our dynamic AI advisory network is temporarily experiencing high demand across available models. Please tap "Retry Question" below in a moment.',
+        source: 'Kisan AI Multi-Provider Dynamic Engine (Temporary Demand Spike)',
         language: detectedLang,
         correlationId,
-        providersAttempted: ['gemini', 'openai']
+        attemptedTrail: dispatchErr.attemptedTrail || []
       });
     }
   } catch (error) {
@@ -1932,7 +1585,21 @@ app.post(['/api/scan-analyze', '/.netlify/functions/gemini-scan'], async (req, r
     }
 
     if (geminiKey && imageBase64) {
-      const { models: visionModels } = getGeminiModels();
+      let visionCandidates = [];
+      try {
+        visionCandidates = await modelManager.getCandidateModels({
+          task: 'vision',
+          geminiKey,
+          openAIKey: getOpenAIApiKey(),
+          preferredGeminiModel: process.env.GEMINI_PRIMARY_MODEL
+        });
+      } catch (e) {}
+
+      const visionModels = visionCandidates.filter(c => c.provider === 'gemini').map(c => c.modelId);
+      if (visionModels.length === 0) {
+        visionModels.push('gemini-2.5-flash', 'gemini-1.5-flash');
+      }
+
       for (const visionModel of visionModels) {
         try {
           const rawBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;

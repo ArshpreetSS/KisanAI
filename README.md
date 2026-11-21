@@ -113,8 +113,13 @@ TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 ```
 
-### 🧠 Multi-Provider AI Resilience Engine (Gemini Primary + OpenAI Fallback)
-- **Primary Provider**: **Google Gemini 3.8 Flash** (`gemini-3.8-flash`) — powers real-time multilingual agro-intelligence.
-- **Secondary Fallback Provider**: **OpenAI Responses API** (`gpt-6-sol`) — automatically triggered if Gemini experiences 503 high demand, rate limits (429), timeouts, server errors, or invalid model configuration (404).
+### 🧠 Dynamic AI Model Discovery & Automatic Multi-Provider Failover
+- **Dynamic Gemini Discovery**: Automatically queries Google's official catalog (`v1beta/models`) with your `GEMINI_API_KEY` to discover active models supporting `generateContent`. Never depends on a rigid hardcoded model array.
+- **Dynamic OpenAI Discovery**: Queries OpenAI's model catalog with `OPENAI_API_KEY` to discover available chat models.
+- **Model Health & Cooldown Registry**: Tracks real-time model health:
+  - **404 Model Not Found**: Marks model `UNSUPPORTED`, invalidates discovery cache, and fails over immediately.
+  - **429 Rate Limits**: Respects `Retry-After` header and enforces temporary cooldown.
+  - **503 / 500 / 504 / Timeouts**: Implements exponential cooldown before re-testing.
+- **Serverless Deadline Management**: Tracks remaining Vercel execution budget and dynamically sizes per-attempt timeouts, cleanly terminating before Vercel cuts connections with a 504.
+- **Admin Diagnostics**: Secure `/api/ai/diagnostics` (and `/admin/ai-health`) endpoint reveals discovered model counts, active health states, and performance metrics without exposing keys.
 - **Zero Fabrication**: If both AI providers are experiencing temporary provider outages, returns an explicit service notice with a one-click Retry button rather than hallucinating agricultural advice.
-- **Strict Separation of Concerns**: Validates requests before triggering any external AI provider. Never leaks API credentials to the browser.
