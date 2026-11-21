@@ -1,8 +1,12 @@
 {
   "name": "kisan-ai-app",
-  "version": "2.0.0",
-  "description": "Kisan AI — Comprehensive Agricultural Intelligence Platform with 4 Interfaces",
+  "version": "2.1.0",
+  "description": "Kisan AI — Comprehensive Agricultural Intelligence Platform: Agromet Telemetry, AI Pathology Scanner, Helplines & Multilingual Voice AI",
   "main": "server.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArshpreetSS/KisanAI.git"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
@@ -15,9 +19,12 @@
     "crop-scanner",
     "punjab-farming",
     "multilingual-voice-ai",
-    "gemini"
+    "gemini",
+    "chatgpt",
+    "vercel",
+    "precision-agromet"
   ],
-  "author": "Kisan AI Team",
+  "author": "Arshpreet Singh Saini",
   "license": "MIT",
   "dependencies": {
     "cors": "^2.8.5",
